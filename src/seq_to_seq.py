@@ -57,6 +57,8 @@ class Seq2Seq(nn.Module)
         target_padded = self.vocab.src.sents2Tensor(target, device=self.device) #Tensor: (tgt_len, b)
         
         enc_hiddens, dec_init_state = self.encode(source_padded, source_lengths)
+        enc_masks = self.generate_sent_masks(enc_hiddens, source_lengths)
+        #TODO
 
     def encode(self, source, source_lengths):
         """
@@ -80,6 +82,20 @@ class Seq2Seq(nn.Module)
         h_d = self.h_projection(h_e_cat)
         c_d = self.c_projection(c_e_cat)
         return enc_hiddens, (h_d, c_d)
+
+    def generate_sent_masks(self, enc_hiddens, source_lengths):
+        """
+        generate sent masks for encoder hidden states
+        @param enc_hiddens (Tensor): encodings of encoder hidden states
+            of shape (b, max_src_len, 2*h), b = batch size, h = hidden size
+        @param source_lengths (list[int]): list of actual length of each source sentence
+        @return enc_masks (Tensor): Tensor of sentence masks
+            of shape (b, max_src_len)
+        """
+        enc_masks = torch.zeros(enc_diddens.shape[0], enc_hiddens.shape[1], dtype=torch.float, device.self.device)
+        for i, src_len in enumerate(source_lengths):
+            enc_masks[i, src_len:] = 1
+        return enc_masks
 
     @property
     def device(self):
