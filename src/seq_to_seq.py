@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from model_embeddings import ModelEmbeddings
 
-class Seq2Seq(nn.Module)
+class Seq2Seq(nn.Module):
     """
     Seq2Seq model with attention
     BiLSTM encoder
@@ -30,7 +30,7 @@ class Seq2Seq(nn.Module)
 
         #initialize neural nets
         self.encoder = nn.LSTM(embed_size, self.hidden_size, bias=True, bidirectional=True)
-        self.decoder = nn.LSTMCell(embed_size, self.hidden_size, bias=True)
+        self.decoder = nn.LSTMCell(embed_size+self.hidden_size, self.hidden_size, bias=True)
         self.h_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
         self.c_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
         self.att_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
@@ -104,7 +104,7 @@ class Seq2Seq(nn.Module)
         #chop the <eos> token for max len tgt sentences
         target = target[:-1]
         
-        Y = self.embeddings(target)
+        Y = self.embeddings.tgt_embedding(target)
 
         (h_t, c_t) = dec_init_state
 
@@ -156,7 +156,7 @@ class Seq2Seq(nn.Module)
         @param source_lengths (list[int]): actual length of source sentences
         @return enc_masks (torch.tensor(b, max_src_len))
         """
-        enc_masks = torch.zeros(enc_diddens.shape[0], enc_hiddens.shape[1], dtype=torch.float, device.self.device)
+        enc_masks = torch.zeros(enc_hiddens.shape[0], enc_hiddens.shape[1], dtype=torch.float, device=self.device)
         for i, src_len in enumerate(source_lengths):
             enc_masks[i, src_len:] = 1
         return enc_masks

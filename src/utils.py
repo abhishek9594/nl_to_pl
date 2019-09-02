@@ -9,7 +9,7 @@ def pad_sents(sents, pad_id):
     """
     pad the list of sents according to max sent len
     @param sents (list[list[int]]): list of word ids of sentences
-    @param pad_id (int): padding idx
+    @param pad_id (int): pad idx
     @return sents_padded (list[list[int]]): padded sentences
     """
     sents_padded = []
@@ -19,7 +19,7 @@ def pad_sents(sents, pad_id):
         if len(sent) > max_len: max_len = len(sent)
     for sent in sents:
         sent_padded = sent
-        sent_padded.extend([pad_idx for i in range(max_len - len(sent))])
+        sent_padded.extend([pad_id for i in range(max_len - len(sent))])
         sents_padded.append(sent_padded)
 
     return sents_padded

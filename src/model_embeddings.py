@@ -20,14 +20,3 @@ class ModelEmbeddings(nn.Module):
         
         self.src_embedding = nn.Embedding(len(vocab.src), self.embed_size, padding_idx=src_pad_idx)
         self.tgt_embedding = nn.Embedding(len(vocab.tgt), self.embed_size, padding_idx=tgt_pad_idx)
-
-    def forward(self, inputs, domain):
-        """
-        @param inputs (torch.tensor(max_sent_len, b)): padded sentences
-        @param domain (str): language domain:  src (source) or tgt (target)
-        @return torch.tensor((max_sent_len, b, embed_size))
-        """
-        if domain == "src":
-            return self.src_embedding(inputs)
-        else:
-            return self.tgt_embedding(inputs)

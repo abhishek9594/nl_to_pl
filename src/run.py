@@ -12,14 +12,14 @@ Options:
     --vocab=<file>                  vocab file
     --batch-size=<int>              batch size [default: 32]
     --embed-size=<int>              embedding size [default: 128]
-    --hiden-size=<int>              hidden size [default: 256]
+    --hidden-size=<int>             hidden size [default: 256]
     --clip-grad=<float>             gradient clipping [default: 5.0]
     --max-epoch=<int>               max epoch [default: 15]
     --patientce=<int>               num epochs early stopping [default: 5]
     --lr=<float>                    learning rate [default: 1e-3]
     --lr-decay=<float>              learning rate decay [default: 0.5]
     --dropout=<float>               dropout rate [default: 0.3]
-    --save-model-to=<file>          save model path [dafault: model.pt] 
+    --save-model-to=<file>          save model path [dafault: seq2seq.pt] 
 """
 from __future__ import division
 
@@ -76,10 +76,10 @@ def train(args):
             
             loss.backward()
 
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+            #grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
             optimizer.step()
 
-            total_loss = batch_loss.item()
+            total_loss += batch_loss.item()
             total_tgt_words += num_words_to_predict
 
         print('epoch = %d, loss = %.2f, time_elapsed = %.2f'
