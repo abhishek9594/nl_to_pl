@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-model for tuning token embedding
+model for tuning tokens' embeddings
 """
 
 import torch.nn as nn
