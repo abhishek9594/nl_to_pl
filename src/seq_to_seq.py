@@ -46,28 +46,35 @@ class Seq2Seq(nn.Module)
         @param source (list[list[str]]): list of source sentence tokens
         @param target (list[list[str]]): list of target sentence tokens, 
             wrapped by <start> and <eos> tokens
-        @return scores (Tensor): Tensor of shape (b, ) representing the
-            log-likelihood of generating gold target sentences
-            where b = batch size.
+        @return scores (torch.tensor(b, )) log-likelihood of generating gold target sentences
         """
         source_lengths = [len(s) for s in source]
     
         #convert list of sentences to tensors
         source_padded = self.vocab.src.sents2Tensor(source, device=self.device) #Tensor: (src_len, b)
-        target_padded = self.vocab.src.sents2Tensor(target, device=self.device) #Tensor: (tgt_len, b)
+        target_padded = self.vocab.tgt.sents2Tensor(target, device=self.device) #Tensor: (tgt_len, b)
         
         enc_hiddens, dec_init_state = self.encode(source_padded, source_lengths)
         enc_masks = self.generate_sent_masks(enc_hiddens, source_lengths)
-        #TODO
+
+        target_predicted = self.decode(target_padded, dec_init_state, enc_hiddens, enc_masks)
+        P = F.log_softmax(target_predicted, dim=-1)
+
+        #create mask to zero out probability for the pad tokens
+        tgt_mask = (target_padded != self.vocab.tgt['<pad>']).float()
+        #compute cross-entropy between tgt_words and tgt_predicted_words
+        tgt_predicted_words_log_prob = torch.gather(P, dim=-1, 
+            index=target_padded[1:].unsqueeze(-1)).squeeze(-1) * tgt_mask[1:]
+        scores = tgt_predicted_words_log_prob.sum(dim=0)
+        return scores
 
     def encode(self, source, source_lengths):
         """
         apply the encoder on the source to obtain the encoder hidden states
-        @param source (Tensor): Tensor of padded source sentences with shape
-            (max_src_len, b), where b = batch size
-        @param source_lengths (list[int]): list of actual lengths of each source sentence
-        @return dec_init_state (tuple(Tensor, Tensor)): tuple of tensors
-            representing the decoder's initial hidden state
+        @param source (torch.tensor(max_src_len, b)): padded source sentences
+        @param source_lengths (list[int]): actual length of source sentences
+        @return enc_hiddens (torch.tensor(b, max_src_len, 2*h)): sequence of encoder hidden states
+        @return dec_init_state (tuple(Tensor, Tensor)): torch.tensor(b, h)
         """
         X = self.embeddings.src_embedding(source)
         X = rnn.pack_padded_sequence(X, source_lengths)
@@ -83,14 +90,23 @@ class Seq2Seq(nn.Module)
         c_d = self.c_projection(c_e_cat)
         return enc_hiddens, (h_d, c_d)
 
+    def decode(self, target, dec_init_state, enc_hiddens, enc_masks):
+        """
+        apply the decoder on target to predict target words
+        @param target (torch.tensor(max_tgt_len , b)): padded target sentences
+        @param dec_init_state (tuple(Tensor, Tensor)): torch.tensor(b, h)
+        @param enc_hiddens (torch.tensor(b, max_src_len, 2*h))
+        @param enc_masks (torch.tensor(b, max_src_len))
+        @return tgt_predicted (torch.tensor(max_tgt_len - 1, b, len(vocab.tgt)))
+        """
+        #TODO
+    
     def generate_sent_masks(self, enc_hiddens, source_lengths):
         """
         generate sent masks for encoder hidden states
-        @param enc_hiddens (Tensor): encodings of encoder hidden states
-            of shape (b, max_src_len, 2*h), b = batch size, h = hidden size
-        @param source_lengths (list[int]): list of actual length of each source sentence
-        @return enc_masks (Tensor): Tensor of sentence masks
-            of shape (b, max_src_len)
+        @param enc_hiddens (torch.tensor(b, max_src_len, 2*h))
+        @param source_lengths (list[int]): actual length of source sentences
+        @return enc_masks (torch.tensor(b, max_src_len))
         """
         enc_masks = torch.zeros(enc_diddens.shape[0], enc_hiddens.shape[1], dtype=torch.float, device.self.device)
         for i, src_len in enumerate(source_lengths):
