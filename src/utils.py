@@ -1,6 +1,28 @@
 #!/usr/bin/env python
+from __future__ import division
 
+import numpy as np
+import math
 import nltk
+
+def pad_sents(sents, pad_id):
+    """
+    pad the list of sents according to max sent len
+    @param sents (list[list[int]]): list of word ids of sentences
+    @param pad_id (int): padding idx
+    @return sents_padded (list[list[int]]): padded sentences
+    """
+    sents_padded = []
+    max_len = 0
+
+    for sent in sents:
+        if len(sent) > max_len: max_len = len(sent)
+    for sent in sents:
+        sent_padded = sent
+        sent_padded.extend([pad_idx for i in range(max_len - len(sent))])
+        sents_padded.append(sent_padded)
+
+    return sents_padded
 
 def read_corpus(file_path, domain):
     """
@@ -25,7 +47,7 @@ def batch_iter(data, batch_size, shuffle=False):
     @param batch_size (int): batch size
     @param shuffle (boolean): whether to randomly shuffle the dataset
     """
-    batch_num = math.ceil(len(data) / batch_size)
+    batch_num = int(math.ceil(len(data) / batch_size))
     index_array = list(range(len(data)))
 
     if shuffle:

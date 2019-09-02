@@ -16,8 +16,9 @@ from collections import Counter
 from docopt import docopt
 from itertools import chain
 import pickle
+import torch
 
-from utils import read_corpus
+from utils import read_corpus, pad_sents
 
 
 class VocabEntry(object):
@@ -105,6 +106,18 @@ class VocabEntry(object):
         """
         return [self.id2word[w_id] for w_id in word_ids]
 
+    def sents2Tensor(self, sents, device):
+        """Convert list of sentences to tensor by padding required sentences
+        @param sents (list[list[str]]): list of sentences
+        @param device (torch.device): device to load the tensor
+        @return sents_tensor (Tensor): Tensor of shape (max_sent_len, b)
+            where b = batch size
+        """
+        word_ids = self.words2indices(sents)
+        sents_padded = pad_sents(word_ids, self['<pad>'])
+        sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
+        return torch.t(sents_tensor)
+
     @staticmethod
     def from_corpus(corpus, freq_cutoff):
         """ Given a corpus construct a Vocab Entry.
@@ -147,7 +160,7 @@ class Vocab(object):
         return Vocab(src, tgt)
 
     def save(self, file_path):
-        """ Save Vocab to file as JSON dump.
+        """ Save Vocab to file as pickle dump.
         @param file_path (str): file path to vocab file
         """
         pickle.dump(dict(src_word2id=self.src.word2id, tgt_word2id=self.tgt.word2id), open(file_path, 'wb'))
