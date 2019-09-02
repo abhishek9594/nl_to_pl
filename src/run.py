@@ -31,7 +31,7 @@ import torch
 import torch.nn.functional as F
 
 from vocab import Vocab
-from utils import read_corpus
+from utils import read_corpus, batch_iter
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -58,9 +58,36 @@ def train(args):
     init_lr = float(args['--lr'])
     optimizer = torch.optim.Adam(model.parameters(), lr=init_lr)
 
+    total_loss = .0
+    total_tgt_words = 0
     begin_time = time.time()
     for epoch in range(int(args['--max-epoch'])):
-        #TODO
+        for src_sents, tgt_sents in batch_iter(train_data, batch_size=train_batch_size, shuffle=True):
+            num_words_to_predict = sum(len(tgt_sent[1:]) for tgt_sent in tgt_sents)
+
+            optimizer.zero_grad()
+
+            batch_loss = -model(src_sents, tgt_sents).sum()
+            loss = batch_loss / num_words_to_predict
+            
+            loss.backward()
+
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+            optimizer.step()
+
+            total_loss = batch_loss.item()
+            total_tgt_words += num_words_to_predict
+
+        print('epoch = %d, loss = %.2f, time_elapsed = %.2f'
+            % (epoch, total_loss / total_tgt_words, time.time() - begin_time))
+        #reset epoch progress vars
+        total_loss = .0
+        total_tgt_words = 0
+
+        #update lr after every 2 epochs
+        lr = init_lr / 2 ** (epoch // 2)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr       
 
 if __name__ == "__main__":
     args = docopt(__doc__)
