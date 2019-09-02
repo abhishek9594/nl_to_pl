@@ -32,6 +32,7 @@ import torch.nn.functional as F
 
 from vocab import Vocab
 from utils import read_corpus, batch_iter
+from seq_to_seq import Seq2Seq
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -51,7 +52,10 @@ def train(args):
 
     vocab = Vocab.load(args['--vocab'])
 
-    model = Seq2Seq()
+    model = Seq2Seq(embed_size=int(args['--embed-size']),
+                    hidden_size=int(args['--hidden-size']),
+                    dropout_rate=float(args['--dropout']),
+                    vocab=vocab)
     model.train()
     model = model.to(device)
 
