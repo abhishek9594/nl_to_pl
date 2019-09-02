@@ -23,9 +23,9 @@ class ModelEmbeddings(nn.Module):
 
     def forward(self, inputs, domain):
         """
-        @param inputs (tensor): Tensor of padded sents with shape (max_sent_len, b), b = batch_size
+        @param inputs (torch.tensor(max_sent_len, b)): padded sentences
         @param domain (str): language domain:  src (source) or tgt (target)
-        @return Tensor embedding of inputs with shape (max_sent_len, b, embed_size)
+        @return torch.tensor((max_sent_len, b, embed_size))
         """
         if domain == "src":
             return self.src_embedding(inputs)

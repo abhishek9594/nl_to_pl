@@ -110,8 +110,7 @@ class VocabEntry(object):
         """Convert list of sentences to tensor by padding required sentences
         @param sents (list[list[str]]): list of sentences
         @param device (torch.device): device to load the tensor
-        @return sents_tensor (Tensor): Tensor of shape (max_sent_len, b)
-            where b = batch size
+        @return sents_tensor (torch.tensor(max_sent_len, b))
         """
         word_ids = self.words2indices(sents)
         sents_padded = pad_sents(word_ids, self['<pad>'])
