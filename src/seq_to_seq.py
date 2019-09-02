@@ -42,11 +42,10 @@ class Seq2Seq(nn.Module)
         """
         given a batch of source and target sentences, run encoder on source
         to compute the init hidden state for decoder
-        run decoder to compute log-likelihood of target sentences 
+        finally run decoder to compute log-likelihood of target sentences
         @param source (list[list[str]]): list of source sentence tokens
-        @param target (list[list[str]]): list of target sentence tokens, 
-            wrapped by <start> and <eos> tokens
-        @return scores (torch.tensor(b, )) log-likelihood of generating gold target sentences
+        @param target (list[list[str]]): list of target sentence tokens, wrapped by <start> and <eos> tokens
+        @return scores (torch.tensor(b, )): log-likelihood of generating gold target sentences
         """
         source_lengths = [len(s) for s in source]
     
@@ -97,9 +96,58 @@ class Seq2Seq(nn.Module)
         @param dec_init_state (tuple(Tensor, Tensor)): torch.tensor(b, h)
         @param enc_hiddens (torch.tensor(b, max_src_len, 2*h))
         @param enc_masks (torch.tensor(b, max_src_len))
-        @return tgt_predicted (torch.tensor(max_tgt_len - 1, b, len(vocab.tgt)))
+        @return tgt_predicted (torch.tensor(max_tgt_len-1, b, len(vocab.tgt)))
         """
-        #TODO
+        batch_size = enc_hiddens.shape[0]
+        o_prev = torch.zeros(batch_size, self.hidden_size, device=self.device)
+
+        #chop the <eos> token for max len tgt sentences
+        target = target[:-1]
+        
+        Y = self.embeddings(target)
+
+        (h_t, c_t) = dec_init_state
+
+        enc_hiddens_proj = self.att_projection(enc_hiddens)
+
+        hidden_outs = []
+        for y_t in torch.split(Y, split_size_or_sections=1, dim=0):
+            y_t = torch.squeeze(y_t, dim=0)#shape(1, b, e) -> (b, e)
+            i_t = torch.cat((y_t, o_prev), dim=-1)
+            (h_t, c_t), o_t = self.step(i_t, (h_t, c_t), enc_hiddens, enc_hiddens_proj, enc_masks)
+            hidden_outs.append(o_t)
+            o_prev = o_t
+
+        hidden_outs = torch.stack(hidden_outs, dim=0)
+        tgt_predicted = self.tgt_vocab_projection(hidden_outs)
+        return tgt_predicted
+
+    def step(self, i_t, dec_state, enc_hiddens, enc_hiddens_proj, enc_masks):
+        """
+        @param i_t (torch.tensor(b, e+h)): decoder input at t
+        @param dec_state (tuple(torch.tensor(b, h), torch.tensor(b, h)))
+        @param enc_hiddens (torch.tensor(b, max_src_len, h*2))
+        @param enc_hiddens_proj (torch.tensor(b, max_enc_len, h))
+        @param enc_masks (torch.tensor(b, max_enc_len))
+        @return dec_next_state (tuple(torch.tensor(b, h), torch.tensor(b, h))): decoder next hidden and cell state
+        @return o_t (torch.tensor(b, h)): decoder output at t
+        """
+        dec_next_state = self.decoder(i_t, dec_state)
+        (h_t, c_t) = dec_next_state
+        #attention scores
+        e_t = torch.bmm(enc_hiddens_proj, h_t.unsqueeze(-1)).squeeze(-1) #(b, max_src_len)
+        #filling -inf to e_t where enc_masks has 1, to zero out <pad> toks
+        #Note: e^{-inf} = 0
+        if enc_masks is not None:
+            e_t.data.masked_fill_(enc_masks.byte(), -float('inf'))
+        
+        a_t = F.softmax(e_t, dim=-1) #(b, max_enc_len)
+        o_t = torch.bmm(a_t.unsqueeze(1), enc_hiddens).squeeze(1) #(b, h*2)
+        o_t = torch.cat((h_t, o_t), dim=-1) #(b, h*3)
+        
+        o_t = self.combined_out_projection(o_t) #(b, h)
+        o_t = self.dropout(torch.tanh(o_t))
+        return dec_next_state, o_t
     
     def generate_sent_masks(self, enc_hiddens, source_lengths):
         """
