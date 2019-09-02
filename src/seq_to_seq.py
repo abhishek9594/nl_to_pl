@@ -55,7 +55,31 @@ class Seq2Seq(nn.Module)
         #convert list of sentences to tensors
         source_padded = self.vocab.src.sents2Tensor(source, device=self.device) #Tensor: (src_len, b)
         target_padded = self.vocab.src.sents2Tensor(target, device=self.device) #Tensor: (tgt_len, b)
-        #TODO
+        
+        enc_hiddens, dec_init_state = self.encode(source_padded, source_lengths)
+
+    def encode(self, source, source_lengths):
+        """
+        apply the encoder on the source to obtain the encoder hidden states
+        @param source (Tensor): Tensor of padded source sentences with shape
+            (max_src_len, b), where b = batch size
+        @param source_lengths (list[int]): list of actual lengths of each source sentence
+        @return dec_init_state (tuple(Tensor, Tensor)): tuple of tensors
+            representing the decoder's initial hidden state
+        """
+        X = self.embeddings.src_embedding(source)
+        X = rnn.pack_padded_sequence(X, source_lengths)
+        enc_hiddens, (h_e, c_e) = self.encoder(X)
+        enc_hiddens, src_lens_tensor = rnn.pad_packed_sequence(enc_hiddens)
+        batch = source.shape[1]
+        #h_e.shape = (2, b, h)
+        h_e_cat = torch.cat((h_e[0, :, :], h_e[1, :, :]), dim=-1).to(self.device)
+        c_e_cat = torch.cat((c_e[0, :, :], c_e[1, :, :]), dim=-1).to(self.device)
+        #permute dim of enc_hiddens for batch_first
+        enc_hiddens = enc_hiddens.permute(1, 0, 2)
+        h_d = self.h_projection(h_e_cat)
+        c_d = self.c_projection(c_e_cat)
+        return enc_hiddens, (h_d, c_d)
 
     @property
     def device(self):
