@@ -167,3 +167,28 @@ class Seq2Seq(nn.Module):
         property decorator for device
         """
         return self.embeddings.src_embedding.weight.device
+
+    @staticmethod
+    def load(model_path):
+        """ 
+        @param model_path (str): path to model
+        """
+        params = torch.load(model_path, map_location=lambda storage, loc: storage)
+        args = params['args']
+        model = Seq2Seq(vocab=params['vocab'], **args)
+        model.load_state_dict(params['state_dict'])
+
+        return model
+
+    def save(self, path):
+        """ 
+        @param path (str): path to the model
+        """
+        params = {
+            'args': dict(embed_size=self.embeddings.embed_size, 
+            hidden_size=self.hidden_size, dropout_rate=self.dropout_rate),
+            'vocab': self.vocab,
+            'state_dict': self.state_dict()
+        }
+
+        torch.save(params, path)
