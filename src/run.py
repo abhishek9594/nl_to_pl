@@ -17,7 +17,7 @@ Options:
     --hidden-size=<int>             hidden size [default: 256]
     --clip-grad=<float>             gradient clipping [default: 5.0]
     --max-epoch=<int>               max epoch [default: 15]
-    --patientce=<int>               num epochs early stopping [default: 5]
+    --patience=<int>               num epochs early stopping [default: 5]
     --lr=<float>                    learning rate [default: 1e-3]
     --lr-decay=<float>              learning rate decay [default: 0.5]
     --dropout=<float>               dropout rate [default: 0.3]
@@ -132,7 +132,7 @@ def train(args):
         hist_dev_losses.append(dev_loss)
         
         if is_better:
-            #reset patientce
+            #reset patience
             patience = 0
             #save model
             model.save(model_save_path)
