@@ -161,6 +161,84 @@ class Seq2Seq(nn.Module):
             enc_masks[i, src_len:] = 1
         return enc_masks
 
+    def beam_search(self, src_sent, beam_size, max_decoding_time_step):
+        """
+        given a source sentence, search possible hyps, from this seq-2seq model, up to the beam size
+        @param src_sent (list[str]): source sentence
+        @param beam_size (int)
+        @param max_decoding_time_step (int): decode the hyp until <eos> or max decoding time step
+        @return best_hyp (list[str]): best possible hyp
+        """
+        source = [src_sent]
+        source_lengths = [len(src_sent)]
+        source_padded = self.vocab.src.sents2Tensor(source, device=self.device)
+
+        enc_hiddens, dec_init_state = self.encode(source_padded, source_lengths)
+        enc_hiddens_proj = self.att_projection(enc_hiddens)
+
+        t = 0
+
+        hyps = [['<start>']]
+        completed_hyps = []
+        hyp_scores = torch.zeros(len(hyps), dtype=torch.float, device=self.device)
+
+        o_t = torch.zeros(1, self.hidden_size, device=self.device)
+        (h_t, c_t) = dec_init_state
+        while len(completed_hyps) < beam_size and t < max_decoding_time_step:
+            num_hyp = len(hyps)
+            y_t = torch.tensor([self.vocab.tgt[hyp[-1]] for hyp in hyps], dtype=torch.long, device=self.device)
+            y_t = self.embeddings.tgt_embedding(y_t)
+            y_t = torch.cat((y_t, o_t), dim=-1)
+            enc_hiddens_batch = enc_hiddens.expand(num_hyp, enc_hiddens.shape[1], enc_hiddens.shape[2])
+            enc_hiddens_proj_batch = enc_hiddens_proj.expand(num_hyp, enc_hiddens_proj.shape[1], enc_hiddens_proj.shape[2])
+            (h_t, c_t), o_t = self.step(y_t, (h_t, c_t), enc_hiddens_batch, enc_hiddens_proj_batch, enc_masks=None)
+
+            log_p_t = F.log_softmax(self.tgt_vocab_projection(o_t), dim=-1)
+            
+            num_live_hyp = beam_size - len(completed_hyps)
+            live_hyp_scores = (hyp_scores.unsqueeze(1).expand_as(log_p_t) + log_p_t).view(-1) #shape = (num_live_hyp * len(vocab.tgt))
+            top_word_scores, top_word_pos = torch.topk(live_hyp_scores, k=num_live_hyp)
+
+            prev_hyp_ids = top_word_pos / len(self.vocab.tgt)
+            hyp_word_ids = top_word_pos % len(self.vocab.tgt)
+
+            new_hyps = []
+            live_hyp_ids = []
+            new_hyp_scores = []
+
+            for prev_hyp_id, hyp_word_id, top_word_score in zip(prev_hyp_ids, hyp_word_ids, top_word_scores):
+                prev_hyp_id = prev_hyp_id.item()
+                hyp_word_id = hyp_word_id.item()
+                top_word_score = top_word_score.item()
+
+                hyp_word = self.vocab.tgt.id2word[hyp_word_id]
+                new_hyp_sent = hyps[prev_hyp_id] + [hyp_word]
+                if hyp_word == '<eos>':
+                    completed_hyps.append((new_hyp_sent[1:-1], top_word_score))
+                else:
+                    new_hyps.append(new_hyp_sent)
+                    live_hyp_ids.append(prev_hyp_id)
+                    new_hyp_scores.append(top_word_score)
+
+            hyps = new_hyps
+            
+            live_hyp_ids = torch.tensor(live_hyp_ids, dtype=torch.long, device=self.device)
+
+            o_t = o_t[live_hyp_ids]
+            h_t, c_t = h_t[live_hyp_ids], c_t[live_hyp_ids]
+
+            hyp_scores = torch.tensor(new_hyp_scores, dtype=torch.float, device=self.device)
+
+            t += 1
+        #end-while
+        #in this case best_hyp is not guaranteed
+        if len(completed_hyps) == 0:
+            completed_hyps.append((hyps[0][1:], hyp_scores[0].item()))
+
+        completed_hyps.sort(key=lambda (hyp, score): score, reverse=True)
+        best_hyp = [str(word) for word in completed_hyps[0][0]]
+        return best_hyp
+
     @property
     def device(self):
         """
