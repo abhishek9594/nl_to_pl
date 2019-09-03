@@ -4,6 +4,7 @@ from __future__ import division
 import numpy as np
 import math
 import nltk
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 
 def pad_sents(sents, pad_id):
     """
@@ -39,6 +40,28 @@ def read_corpus(file_path, domain):
         data.append(toks)
 
     return data
+
+def save_sents(sents, file_path):
+    """
+    save sentences in a file line by line
+    @param sents (list[list[str]]): list of sentences
+    @param file_path (str): location to save senetnces
+    """
+    with open(file_path, 'w') as file_obj:
+        for sent in sents:
+            file_obj.write(' '.join(sent) + '\n')
+
+def compute_bleu_score(refs, hyps):
+    """
+    compute bleu score for the given references against hypotheses
+    @param refs (list[list[str]]): list of reference sents with <start> and <eos>
+    @param hyps (list[list[str]]): list of generated candidate sents
+    @return bleu_score (float): BLEU score for the word overlap
+    """
+    bleu_score = corpus_bleu([[ref[1:-1]] for ref in refs],
+                            hyps,
+                            smoothing_function=SmoothingFunction().method4)
+    return bleu_score
 
 def batch_iter(data, batch_size, shuffle=False):
     """

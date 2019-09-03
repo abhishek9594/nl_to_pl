@@ -4,6 +4,7 @@ run script to train and test our neural model
 
 Usage:
     run.py train --train-src=<file> --train-tgt=<file> --dev-src=<file> --dev-tgt=<file> --vocab=<file> [options]
+    run.py test MODEL_PATH TEST_SOURCE_FILE TEST_TARGET_FILE OUTPUT_FILE [options]
 
 Options:
     -h --help                       show this screen.
@@ -17,23 +18,24 @@ Options:
     --hidden-size=<int>             hidden size [default: 256]
     --clip-grad=<float>             gradient clipping [default: 5.0]
     --max-epoch=<int>               max epoch [default: 15]
-    --patience=<int>               num epochs early stopping [default: 5]
+    --patience=<int>                num epochs early stopping [default: 5]
     --lr=<float>                    learning rate [default: 1e-3]
     --lr-decay=<float>              learning rate decay [default: 0.5]
     --dropout=<float>               dropout rate [default: 0.3]
     --save-model-to=<file>          save model path [default: seq2seq.pt] 
+    --beam-size=<int>               beam size [default: 5]
+    --max-decoding-time-step=<int>  max number of decoding time steps [default: 50]
 """
 from __future__ import division
 
 import time
 import math
 from docopt import docopt
-
 import torch
 import torch.nn.functional as F
 
 from vocab import Vocab
-from utils import read_corpus, batch_iter
+from utils import read_corpus, batch_iter, save_sents, compute_bleu_score
 from seq_to_seq import Seq2Seq
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -66,6 +68,28 @@ def validate(model, dev_data, batch_size=32):
         model.train()
 
     return dev_loss
+
+def decode(model, test_data_src, beam_size, max_decoding_time_step):
+    """
+    run inference on model to generate target sentences
+    @param model (Seq2Seq)
+    @param test_data_src (list[list[str]): list of test source sentences
+    @param beam_size (int): beam size
+    @param max_decoding_time_step (int): maximum decoding time steps
+    @return gen_tgt_sents (list[list[str]])
+    """
+    was_training = model.training
+    model.eval()
+
+    gen_tgt_sents = []
+    with torch.no_grad():
+        for src in test_data_src:
+            gen_tgt_sent = model.beam_search(src, beam_size, max_decoding_time_step)
+            gen_tgt_sents.append(gen_tgt_sent)
+
+    if was_training:
+        model.train
+    return gen_tgt_sents
 
 def train(args):
     """
@@ -150,7 +174,29 @@ def train(args):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr       
 
+def test(args):
+    """
+    test Seq2Seq model by generating target sentences
+    @param args (dict): command line args
+    """
+    model = Seq2Seq.load(args['MODEL_PATH'])
+    model = model.to(device)
+
+    test_data_src = read_corpus(args['TEST_SOURCE_FILE'], domain='src')
+    test_data_tgt = read_corpus(args['TEST_TARGET_FILE'], domain='tgt')
+    
+    gen_tgt_sents = decode(model, test_data_src, 
+                            beam_size=int(args['--beam-size']),
+                            max_decoding_time_step=int(args['--max-decoding-time-step']))
+
+    save_sents(gen_tgt_sents, args['OUTPUT_FILE'])
+
+    bleu_score = compute_bleu_score(refs=test_data_tgt, hyps=gen_tgt_sents)
+    print('BLEU score = %.2f' % (bleu_score))
+
 if __name__ == "__main__":
     args = docopt(__doc__)
     if args['train']:
         train(args)
+    elif args['test']:
+        test(args)
