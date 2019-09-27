@@ -160,14 +160,21 @@ class Vocab(object):
 
     def sents2Indices(self, src_sents, device):
         """Map source sentence words into target vocabulary index, such that if word is shared then index=target_vocab(word), else index=len(target_vocab)+word_index in source sentence 
+            and also track the max unique words in the source sentences
         @param src_sents (list[list[str]]): list of source sentences
         @param device (torch.device): device to load the tensor
         @return index_tensor (torch.tensor(max_src_sent_len, b))
+        @return max_src_words (int): max unique words src_sents
         """
         ids = [[self.tgt[word] if word in self.tgt else i + len(self.tgt) for i, word in enumerate(sent)] for sent in src_sents]
         index_padded = pad_sents(ids, self.tgt['<pad>'])
         index_tensor = torch.tensor(index_padded, dtype=torch.long, device=device)
-        return torch.t(index_tensor)
+        max_src_words = 0
+        for sent in src_sents:
+            src_word_set = set()
+            for word in sent: src_word_set.add(word)
+            max_src_words = max(max_src_words, len(src_word_set))
+        return torch.t(index_tensor), max_src_words
 
     def save(self, file_path):
         """ Save Vocab to file as pickle dump.
