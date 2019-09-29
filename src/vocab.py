@@ -117,6 +117,24 @@ class VocabEntry(object):
         sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
         return torch.t(sents_tensor)
 
+    def tgt_sents2Tensor(self, src_sents, tgt_sents, device):
+        """
+        Convert list of target sentences to tensor by capturing the copied source words and padding required sentences
+        @param src_sents (list[list[str]]): list of source sentences
+        @param tgt_sents (list[list[str]]): list of target sentences
+        @return sents_tensor (torch.tensor(max_tgt_sent_len, b))
+        """
+        word_ids = []
+	    for src_sent, tgt_sent in zip(src_sents, tgt_sents):
+		    src_index_map = dict()
+		    for i, src_word in enumerate(src_sent):
+			    if src_word not in src_index_map: src_index_map[src_word] = i
+		    word_ids.append([self[word] if word in self else src_index_map[word] + len(self) for word in tgt_sent])
+        sents_padded = pad_sents(word_ids, self['<pad>'])
+        sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
+        return torch.t(sents_tensor)
+
+
     @staticmethod
     def from_corpus(corpus, freq_cutoff):
         """ Given a corpus construct a Vocab Entry.
@@ -158,23 +176,24 @@ class Vocab(object):
 
         return Vocab(src, tgt)
 
-    def sents2Indices(self, src_sents, device):
-        """Map source sentence words into target vocabulary index, such that if word is shared then index=target_vocab(word), else index=len(target_vocab)+word_index in source sentence 
-            and also track the max unique words in the source sentences
-        @param src_sents (list[list[str]]): list of source sentences
-        @param device (torch.device): device to load the tensor
-        @return index_tensor (torch.tensor(max_src_sent_len, b))
-        @return max_src_words (int): max unique words src_sents
+    def map_src_tgt(self, src_sents, device):
         """
-        ids = [[self.tgt[word] if word in self.tgt else i + len(self.tgt) for i, word in enumerate(sent)] for sent in src_sents]
-        index_padded = pad_sents(ids, self.tgt['<pad>'])
-        index_tensor = torch.tensor(index_padded, dtype=torch.long, device=device)
-        max_src_words = 0
-        for sent in src_sents:
-            src_word_set = set()
-            for word in sent: src_word_set.add(word)
-            max_src_words = max(max_src_words, len(src_word_set))
-        return torch.t(index_tensor), max_src_words
+        map source sent word ids in target vocab domain
+        @param src_sents (list[list[str]]): list of source sentences
+        @return src_tgt_tensor(torch.tensor(max_src_sent_len, b))
+        @return max_unk_src_words (int): maximum number of unique source words not in target vocab
+        """
+        src_tgt_ids = []
+        max_unk_src_words = 0
+        for src_sent in src_sents:
+            src_index_map = dict()
+            for i, src_word in enumerate(src_sent):
+                if src_word not in src_index_map: src_index_map[src_word] = i
+            src_tgt_ids.append([self.tgt[word] if word in self.tgt else src_index_map[word] + len(self.tgt) for word in src_sent])
+            max_unk_src_words = max(max_unk_src_words, max(src_tgt_ids[-1]) - len(self.tgt))
+        sents_padded = pad_sents(src_tgt_ids, self['<pad>'])
+        src_tgt_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
+        return src_tgt_tensor, max_unk_src_words
 
     def save(self, file_path):
         """ Save Vocab to file as pickle dump.
