@@ -125,11 +125,11 @@ class VocabEntry(object):
         @return sents_tensor (torch.tensor(max_tgt_sent_len, b))
         """
         word_ids = []
-	    for src_sent, tgt_sent in zip(src_sents, tgt_sents):
-		    src_index_map = dict()
-		    for i, src_word in enumerate(src_sent):
-			    if src_word not in src_index_map: src_index_map[src_word] = i
-		    word_ids.append([self[word] if word in self else src_index_map[word] + len(self) for word in tgt_sent])
+        for src_sent, tgt_sent in zip(src_sents, tgt_sents):
+            src_index_map = dict()
+            for i, src_word in enumerate(src_sent):
+                if src_word not in src_index_map: src_index_map[src_word] = i
+            word_ids.append([self[word] if word in self else src_index_map[word] + len(self) for word in tgt_sent])
         sents_padded = pad_sents(word_ids, self['<pad>'])
         sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
         return torch.t(sents_tensor)
