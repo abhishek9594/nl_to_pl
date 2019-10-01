@@ -31,7 +31,7 @@ class CopyNet(nn.Module):
 
         #initialize neural nets
         self.encoder = nn.LSTM(embed_size, self.hidden_size, bias=True, bidirectional=True)
-        self.decoder = nn.LSTMCell(embed_size+self.hidden_size*4, self.hidden_size, bias=True)
+        self.decoder = nn.LSTMCell(embed_size+self.hidden_size*2, self.hidden_size, bias=True)
         self.h_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
         self.c_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
         self.att_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
@@ -103,9 +103,6 @@ class CopyNet(nn.Module):
         @param enc_masks (torch.tensor(b, max_src_len))
         @return tgt_predicted (torch.tensor(max_tgt_len-1, b, len(vocab.tgt)))
         """
-        batch_size = enc_hiddens.shape[0]
-        sel_read_t = torch.zeros(batch_size, self.hidden_size*2, device=self.device)
-
         #chop the <eos> token for max len tgt sentences
         target = target[:-1]
         
@@ -118,17 +115,15 @@ class CopyNet(nn.Module):
         outs = []
         for y_t in torch.split(Y, split_size_or_sections=1, dim=0):
             y_t = torch.squeeze(y_t, dim=0)#shape(1, b, e) -> (b, e)
-            i_t = torch.cat((y_t, sel_read_t), dim=-1)
-            o_t, (h_t, c_t) = self.step(i_t, (h_t, c_t), src_tgt_words, max_unk_src_words, enc_hiddens, enc_hiddens_proj, enc_masks)
+            o_t, (h_t, c_t) = self.step(y_t, (h_t, c_t), src_tgt_words, max_unk_src_words, enc_hiddens, enc_hiddens_proj, enc_masks)
             outs.append(o_t)
-            #TODO update sel_read_t
 
         tgt_predicted = torch.stack(outs, dim=0)
         return tgt_predicted
 
     def step(self, y_t, dec_state, src_tgt_ids, max_unk_src_words, enc_hiddens, enc_hiddens_proj, enc_masks):
         """
-        @param y_t (torch.tensor(b, e+h*2)): decoder partial input at time step t (embedding; sel_read)_t
+        @param y_t (torch.tensor(b, e)): decoder embedding input at time step t
         @param dec_state (tuple(torch.tensor(b, h), torch.tensor(b, h)))
         @param src_tgt_ids (torch.tensor(b, max_src_len)): indices of src words mapping to target vocab
         @param max_unk_src_words (int): maximum number of unk src words in target vocab
@@ -148,7 +143,7 @@ class CopyNet(nn.Module):
         
         a_t = F.softmax(e_t, dim=-1) #(b, max_enc_len)
         att_read_t = torch.bmm(a_t.unsqueeze(1), enc_hiddens).squeeze(1) #(b, h*2)
-        i_t = torch.cat((att_read_t, y_t), dim=-1) #(b, e+h*4)
+        i_t = torch.cat((att_read_t, y_t), dim=-1) #(b, e+h*2)
         s_t, dec_next_state = self.decoder(i_t, dec_state) #((b, h), (h_t+1, c_t+1))
 
         gen_t = self.tgt_vocab_projection(s_t) #(b, |T_V|)
@@ -201,16 +196,14 @@ class CopyNet(nn.Module):
         completed_hyps = []
         hyp_scores = torch.zeros(len(hyps), dtype=torch.float, device=self.device)
 
-        sel_read_t = torch.zeros(1, self.hidden_size*2, device=self.device)
         (h_t, c_t) = dec_init_state
         while len(completed_hyps) < beam_size and t < max_decoding_time_step:
             num_hyp = len(hyps)
             y_t = torch.tensor([self.vocab.tgt[hyp[-1]] for hyp in hyps], dtype=torch.long, device=self.device)
             y_t = self.embeddings.tgt_embedding(y_t)
-            i_t = torch.cat((y_t, sel_read_t), dim=-1)
             enc_hiddens_batch = enc_hiddens.expand(num_hyp, enc_hiddens.shape[1], enc_hiddens.shape[2])
             enc_hiddens_proj_batch = enc_hiddens_proj.expand(num_hyp, enc_hiddens_proj.shape[1], enc_hiddens_proj.shape[2])
-            o_t, (h_t, c_t) = self.step(i_t, (h_t, c_t), src_tgt_ids, max_unk_src_words, enc_hiddens_batch, enc_hiddens_proj_batch, enc_masks=None)
+            o_t, (h_t, c_t) = self.step(y_t, (h_t, c_t), src_tgt_ids, max_unk_src_words, enc_hiddens_batch, enc_hiddens_proj_batch, enc_masks=None)
 
             log_p_t = o_t
             
@@ -243,8 +236,6 @@ class CopyNet(nn.Module):
             
             live_hyp_ids = torch.tensor(live_hyp_ids, dtype=torch.long, device=self.device)
             
-            #TODO update sel_read_t
-            #o_prev = o_t[live_hyp_ids]
             h_t, c_t = h_t[live_hyp_ids], c_t[live_hyp_ids]
 
             hyp_scores = torch.tensor(new_hyp_scores, dtype=torch.float, device=self.device)
