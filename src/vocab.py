@@ -129,7 +129,8 @@ class VocabEntry(object):
             src_index_map = dict()
             for i, src_word in enumerate(src_sent):
                 if src_word not in src_index_map: src_index_map[src_word] = i
-            word_ids.append([self[word] if word in self else src_index_map[word] + len(self) for word in tgt_sent])
+            word_ids.append([self[word] if word in self or word not in src_index_map else src_index_map[word] + len(self) 
+                for word in tgt_sent])
         sents_padded = pad_sents(word_ids, self['<pad>'])
         sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
         return torch.t(sents_tensor)
@@ -189,9 +190,10 @@ class Vocab(object):
             src_index_map = dict()
             for i, src_word in enumerate(src_sent):
                 if src_word not in src_index_map: src_index_map[src_word] = i
-            src_tgt_ids.append([self.tgt[word] if word in self.tgt else src_index_map[word] + len(self.tgt) for word in src_sent])
-            max_unk_src_words = max(max_unk_src_words, max(src_tgt_ids[-1]) - len(self.tgt))
-        sents_padded = pad_sents(src_tgt_ids, self['<pad>'])
+            src_tgt_ids.append([self.tgt[word] if word in self.tgt or word not in src_index_map else src_index_map[word] + len(self.tgt)
+                for word in src_sent])
+            max_unk_src_words = max(max_unk_src_words, max(src_tgt_ids[-1]) - (len(self.tgt) - 1))
+        sents_padded = pad_sents(src_tgt_ids, self.tgt['<pad>'])
         src_tgt_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
         return src_tgt_tensor, max_unk_src_words
 
