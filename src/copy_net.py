@@ -115,7 +115,7 @@ class CopyNet(nn.Module):
         outs = []
         for y_t in torch.split(Y, split_size_or_sections=1, dim=0):
             y_t = torch.squeeze(y_t, dim=0)#shape(1, b, e) -> (b, e)
-            o_t, (h_t, c_t) = self.step(y_t, (h_t, c_t), src_tgt_words, max_unk_src_words, enc_hiddens, enc_hiddens_proj, enc_masks)
+            o_t, (h_t, c_t) = self.step(y_t, (h_t, c_t), src_tgt_ids, max_unk_src_words, enc_hiddens, enc_hiddens_proj, enc_masks)
             outs.append(o_t)
 
         tgt_predicted = torch.stack(outs, dim=0)
@@ -144,22 +144,22 @@ class CopyNet(nn.Module):
         a_t = F.softmax(e_t, dim=-1) #(b, max_enc_len)
         att_read_t = torch.bmm(a_t.unsqueeze(1), enc_hiddens).squeeze(1) #(b, h*2)
         i_t = torch.cat((att_read_t, y_t), dim=-1) #(b, e+h*2)
-        s_t, dec_next_state = self.decoder(i_t, dec_state) #((b, h), (h_t+1, c_t+1))
+        dec_next_state = self.decoder(i_t, dec_state) #((h_t+1, c_t+1): ((b, h), (b, h)))
+        (h_t_next, c_t_next) = dec_next_state
 
-        gen_t = self.tgt_vocab_projection(s_t) #(b, |T_V|)
+        gen_t = self.tgt_vocab_projection(h_t_next) #(b, |T_V|)
         gen_t = torch.exp(gen_t)
         batch_size = gen_t.shape[0]
         copy_t = torch.zeros(batch_size, max_unk_src_words, device=self.device)
-        o_t = torch.cat((gent_t, copy_t), dim=-1) #(b, |T_V|+max_unk_src_words)
-        for i in range(len(enc_hiddens)):
-            copy_t_i = torch.exp(torch.bmm(torch.tanh(self.copy_projection(enc_hiddens[:, i])).unsqueeze(1), s_t.unsqueeze(-1)).view(-1)) #(b, )
+        o_t = torch.cat((gen_t, copy_t), dim=-1) #(b, |T_V|+max_unk_src_words)
+        max_src_len = enc_hiddens.shape[1]
+        for i in range(max_src_len):
+            copy_t_i = torch.exp(torch.bmm(torch.tanh(self.copy_projection(enc_hiddens[:, i])).unsqueeze(1), h_t_next.unsqueeze(-1)).view(-1)) #(b, )
             if enc_masks is not None:
                 copy_t_i.data.masked_fill_(enc_masks[:, i].byte(), 0)
-            o_t.scatter_add_(dim=-1, index=src_tgt_ids[:, i].unsqueeze(1), other=copy_t_i.unsqueeze(1))
+            o_t.scatter_add_(dim=-1, index=src_tgt_ids[:, i].unsqueeze(1), src=copy_t_i.unsqueeze(1))
         o_t.div_(torch.sum(o_t, dim=-1).unsqueeze(1))
 
-        o_t = self.combined_out_projection(o_t) #(b, h)
-        o_t = self.dropout(torch.tanh(o_t))
         return o_t, dec_next_state
     
     def generate_sent_masks(self, enc_hiddens, source_lengths):
