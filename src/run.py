@@ -22,7 +22,7 @@ Options:
     --lr=<float>                    learning rate [default: 1e-3]
     --lr-decay=<float>              learning rate decay [default: 0.5]
     --dropout=<float>               dropout rate [default: 0.3]
-    --save-model-to=<file>          save model path [default: seq2seq.pt] 
+    --save-model-to=<file>          save model path [default: copy_net.pt] 
     --beam-size=<int>               beam size [default: 5]
     --max-decoding-time-step=<int>  max number of decoding time steps [default: 50]
 """
@@ -36,14 +36,14 @@ import torch.nn.functional as F
 
 from vocab import Vocab
 from utils import read_corpus, batch_iter, save_sents, compute_bleu_score
-from seq_to_seq import Seq2Seq
+from copy_net import CopyNet
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def validate(model, dev_data, batch_size=32):
     """
     validate model on dev set
-    @param model (Seq2Seq): Seq2Seq model
+    @param model (CopyNet): CopyNet model
     @param dev_data (list[(list[str], list[str])]): list of tuples of source and target sentences
     @param batch_size (int): batch size
     @return dev_loss (float): cross entropy loss on dev set
@@ -72,7 +72,7 @@ def validate(model, dev_data, batch_size=32):
 def decode(model, test_data_src, beam_size, max_decoding_time_step):
     """
     run inference on model to generate target sentences
-    @param model (Seq2Seq)
+    @param model (CopyNet)
     @param test_data_src (list[list[str]): list of test source sentences
     @param beam_size (int): beam size
     @param max_decoding_time_step (int): maximum decoding time steps
@@ -111,7 +111,7 @@ def train(args):
 
     vocab = Vocab.load(args['--vocab'])
 
-    model = Seq2Seq(embed_size=int(args['--embed-size']),
+    model = CopyNet(embed_size=int(args['--embed-size']),
                     hidden_size=int(args['--hidden-size']),
                     dropout_rate=float(args['--dropout']),
                     vocab=vocab)
@@ -176,10 +176,10 @@ def train(args):
 
 def test(args):
     """
-    test Seq2Seq model by generating target sentences
+    test CopyNet model by generating target sentences
     @param args (dict): command line args
     """
-    model = Seq2Seq.load(args['MODEL_PATH'])
+    model = CopyNet.load(args['MODEL_PATH'])
     model = model.to(device)
 
     test_data_src = read_corpus(args['TEST_SOURCE_FILE'], domain='src')
