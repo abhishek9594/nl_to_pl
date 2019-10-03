@@ -60,7 +60,7 @@ class CopyNet(nn.Module):
         enc_masks = self.generate_sent_masks(enc_hiddens, source_lengths)
 
         target_predicted = self.decode(target_padded, src_tgt_ids, max_unk_src_words, dec_init_state, enc_hiddens, enc_masks)
-        P = F.log_softmax(target_predicted, dim=-1)
+        P = torch.log(target_predicted)
 
         #create mask to zero out probability for the pad tokens
         tgt_mask = (target_copy_padded != self.vocab.tgt['<pad>']).float()
