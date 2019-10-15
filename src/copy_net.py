@@ -31,7 +31,7 @@ class CopyNet(nn.Module):
 
         #initialize neural nets
         self.encoder = nn.LSTM(embed_size, self.hidden_size, bias=True, bidirectional=True)
-        self.decoder = nn.LSTMCell(embed_size+self.hidden_size*2, self.hidden_size, bias=True)
+        self.decoder = nn.LSTMCell(embed_size, self.hidden_size, bias=True)
         self.h_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
         self.c_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
         self.att_projection = nn.Linear(self.hidden_size*2, self.hidden_size, bias=False)
@@ -60,7 +60,7 @@ class CopyNet(nn.Module):
         enc_masks = self.generate_sent_masks(enc_hiddens, source_lengths)
 
         target_predicted = self.decode(target_padded, src_tgt_ids, max_unk_src_words, dec_init_state, enc_hiddens, enc_masks)
-        P = torch.log(target_predicted)
+        P = F.log_softmax(target_predicted, dim=-1)
 
         #create mask to zero out probability for the pad tokens
         tgt_mask = (target_copy_padded != self.vocab.tgt['<pad>']).float()
@@ -109,12 +109,14 @@ class CopyNet(nn.Module):
         Y = self.embeddings.tgt_embedding(target)
 
         (h_t, c_t) = dec_init_state
+        sel_read_t = torch.zeros(enc_hiddens.shape[0], enc_hiddens.shape[-1], device=self.device)
 
         enc_hiddens_proj = self.att_projection(enc_hiddens)
 
         outs = []
         for y_t in torch.split(Y, split_size_or_sections=1, dim=0):
             y_t = torch.squeeze(y_t, dim=0)#shape(1, b, e) -> (b, e)
+            #i_t = torch.cat((y_t, sel_read_t), dim=-1)
             o_t, (h_t, c_t) = self.step(y_t, (h_t, c_t), src_tgt_ids, max_unk_src_words, enc_hiddens, enc_hiddens_proj, enc_masks)
             outs.append(o_t)
 
@@ -133,33 +135,23 @@ class CopyNet(nn.Module):
         @return o_t (torch.tensor(b, h)): decoder output at t
         @return dec_next_state (tuple(torch.tensor(b, h), torch.tensor(b, h))): decoder next hidden and cell state
         """
-        (h_t, c_t) = dec_state
-        #attention scores
-        e_t = torch.bmm(enc_hiddens_proj, h_t.unsqueeze(-1)).squeeze(-1) #(b, max_src_len)
-        #filling -inf to e_t where enc_masks has 1, to zero out <pad> toks
-        #Note: e^{-inf} = 0
-        if enc_masks is not None:
-            e_t.data.masked_fill_(enc_masks.byte(), -float('inf'))
-        
-        a_t = F.softmax(e_t, dim=-1) #(b, max_enc_len)
-        att_read_t = torch.bmm(a_t.unsqueeze(1), enc_hiddens).squeeze(1) #(b, h*2)
-        i_t = torch.cat((att_read_t, y_t), dim=-1) #(b, e+h*2)
-        dec_next_state = self.decoder(i_t, dec_state) #((h_t+1, c_t+1): ((b, h), (b, h)))
+        dec_next_state = self.decoder(y_t, dec_state) #((h_t+1, c_t+1): ((b, h), (b, h)))
         (h_t_next, c_t_next) = dec_next_state
 
-        gen_t = self.tgt_vocab_projection(h_t_next) #(b, |T_V|)
-        gen_t = torch.exp(gen_t)
-        batch_size = gen_t.shape[0]
-        copy_t = torch.zeros(batch_size, max_unk_src_words, device=self.device)
-        o_t = torch.cat((gen_t, copy_t), dim=-1) #(b, |T_V|+max_unk_src_words)
+        gen_t = self.tgt_vocab_projection(h_t_next) #(b, |V_T|)
+        
+        batch_size = enc_hiddens.shape[0]
         max_src_len = enc_hiddens.shape[1]
+        
+        copy_t = torch.zeros(batch_size, max_unk_src_words, device=self.device)
+        o_t = torch.cat((gen_t, copy_t), dim=-1) #(b, |V_T|+max_unk_src_words)
         for i in range(max_src_len):
-            copy_t_i = torch.exp(torch.bmm(torch.tanh(self.copy_projection(enc_hiddens[:, i])).unsqueeze(1), h_t_next.unsqueeze(-1)).view(-1)) #(b, )
+            copy_t_i = torch.bmm(torch.tanh(self.copy_projection(enc_hiddens[:, i])).unsqueeze(1), h_t_next.unsqueeze(-1)).view(-1) #(b, )
             if enc_masks is not None:
                 copy_t_i.data.masked_fill_(enc_masks[:, i].byte(), 0)
-            o_t.scatter_add_(dim=-1, index=src_tgt_ids[:, i].unsqueeze(1), src=copy_t_i.unsqueeze(1))
-        o_t.div_(torch.sum(o_t, dim=-1).unsqueeze(1))
+            o_t.scatter_add(dim=-1, index=src_tgt_ids[:, i].unsqueeze(1), source=copy_t_i.unsqueeze(1))
 
+        #sel_read_t = torch.bmm(rho_t.unsqueeze(1), enc_hiddens).squeeze(1) #(b, 2h)
         return o_t, dec_next_state
     
     def generate_sent_masks(self, enc_hiddens, source_lengths):
@@ -186,6 +178,13 @@ class CopyNet(nn.Module):
         source_lengths = [len(src_sent)]
         source_padded = self.vocab.src.sents2Tensor(source, device=self.device)
         src_tgt_ids, max_unk_src_words = self.vocab.map_src_tgt(source, device=self.device)
+        src_id_word_map, word_pos = {}, 0
+        unk_word_set = set()
+        for w in src_sent:
+            if w not in unk_word_set and w not in self.vocab.tgt:
+                src_id_word_map[word_pos] = w
+                unk_word_set.add(w)
+                word_pos += 1
 
         enc_hiddens, dec_init_state = self.encode(source_padded, source_lengths)
         enc_hiddens_proj = self.att_projection(enc_hiddens)
@@ -205,7 +204,7 @@ class CopyNet(nn.Module):
             enc_hiddens_proj_batch = enc_hiddens_proj.expand(num_hyp, enc_hiddens_proj.shape[1], enc_hiddens_proj.shape[2])
             o_t, (h_t, c_t) = self.step(y_t, (h_t, c_t), src_tgt_ids, max_unk_src_words, enc_hiddens_batch, enc_hiddens_proj_batch, enc_masks=None)
 
-            log_p_t = o_t
+            log_p_t = F.log_softmax(o_t, dim=-1)
             
             num_live_hyp = beam_size - len(completed_hyps)
             live_hyp_scores = (hyp_scores.unsqueeze(1).expand_as(log_p_t) + log_p_t).view(-1) #shape = (num_live_hyp * len(vocab.tgt))
@@ -223,7 +222,7 @@ class CopyNet(nn.Module):
                 hyp_word_id = hyp_word_id.item()
                 top_word_score = top_word_score.item()
 
-                hyp_word = self.vocab.tgt.id2word[hyp_word_id] if hyp_word_id < len(self.vocab.tgt) else source[0][hyp_word_id - len(self.vocab.tgt)]
+                hyp_word = self.vocab.tgt.id2word[hyp_word_id] if hyp_word_id < len(self.vocab.tgt) else src_id_word_map[hyp_word_id - len(self.vocab.tgt)]
                 new_hyp_sent = hyps[prev_hyp_id] + [hyp_word]
                 if hyp_word == '<eos>':
                     completed_hyps.append((new_hyp_sent[1:-1], top_word_score))
