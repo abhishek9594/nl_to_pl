@@ -106,16 +106,15 @@ class VocabEntry(object):
         """
         return [self.id2word[w_id] for w_id in word_ids]
 
-    def sents2Tensor(self, sents, device):
+    def sents2Tensor(self, sents):
         """Convert list of sentences to tensor by padding required sentences
         @param sents (list[list[str]]): list of sentences
-        @param device (torch.device): device to load the tensor
-        @return sents_tensor (torch.tensor(max_sent_len, b))
+        @return sents_tensor (torch.tensor(b, max_sent_len))
         """
         word_ids = self.words2indices(sents)
         sents_padded = pad_sents(word_ids, self['<pad>'])
-        sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
-        return torch.t(sents_tensor)
+        sents_tensor = torch.tensor(sents_padded, dtype=torch.long)
+        return sents_tensor
 
     def tgt_sents2Tensor(self, src_sents, tgt_sents, device):
         """
@@ -134,7 +133,8 @@ class VocabEntry(object):
                     copy_word_map[src_word] = copy_word_pos
                     copy_word_pos += 1
            
-            word_ids.append([self[word] if word in self or word not in copy_word_map else copy_word_map[word] + len(self) for word in tgt_sent])
+            word_ids.append([self[word] if word not in copy_word_map else copy_word_map[word] + len(self) for word in tgt_sent])
+            #word_ids.append([self[word] for word in tgt_sent])
         sents_padded = pad_sents(word_ids, self['<pad>'])
         sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
         return torch.t(sents_tensor)
@@ -199,7 +199,8 @@ class Vocab(object):
                     copy_word_map[src_word] = copy_word_pos
                     copy_word_pos += 1
            
-            src_tgt_ids.append([self.tgt[word] if word in self.tgt or word not in copy_word_map else copy_word_map[word] + len(self.tgt) for word in src_sent])
+            src_tgt_ids.append([self.tgt[word] if word not in copy_word_map else copy_word_map[word] + len(self.tgt) for word in src_sent])
+            #src_tgt_ids.append([self.tgt[word] for word in src_sent])
             max_unk_src_words = max(max_unk_src_words, max(src_tgt_ids[-1]) - (len(self.tgt) - 1))
         sents_padded = pad_sents(src_tgt_ids, self.tgt['<pad>'])
         src_tgt_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
