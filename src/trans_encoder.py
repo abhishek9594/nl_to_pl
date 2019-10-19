@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from multi_head_attn import MultiHeadAttn
 from layer_norm import LayerNorm

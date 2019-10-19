@@ -1,5 +1,5 @@
+#!/usr/bin/env python
 from __future__ import division
-import math
 
 import torch
 import torch.nn as nn
@@ -39,8 +39,14 @@ class TransVanilla(nn.Module):
         subseq_mask = subsequent_mask(tgt_input.shape[-1]).type_as(tgt_mask.data).to(self.device)
         tgt_mask = tgt_mask & subseq_mask
         tgt_decoded = self.decode(src_encoded, tgt_input, src_mask, tgt_mask)
-        P = F.softmax(tgt_decoded, dim=-1)
-        return P
+        P = F.log_softmax(tgt_decoded, dim=-1)
+
+        tgt_padded_mask = (tgt_padded != self.vocab.tgt['<pad>']).float()
+        #compute cross-entropy between tgt_words and tgt_predicted_words
+        tgt_predicted = torch.gather(P, dim=-1, 
+            index=tgt_padded[:, 1:].unsqueeze(-1)).squeeze(-1) * tgt_padded_mask[:, 1:]
+        scores = tgt_predicted.sum(dim=0)
+        return scores
         
     def encode(self, src, src_mask=None):
         x = self.embeddings.src_embedding(src)
@@ -60,3 +66,14 @@ class TransVanilla(nn.Module):
         property decorator for device
         """
         return self.embeddings.src_embedding.weight.device
+    
+    def save(self, path):
+        """ 
+        @param path (str): path to the model
+        """
+        params = {
+            'args': dict(embed_size=self.embeddings.embed_size, 
+            hidden_size=self.d_ff, vocab=self.vocab, dropout_rate=self.dropout_rate),
+            'state_dict': self.state_dict()
+        }
+        torch.save(params, path)
