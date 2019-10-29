@@ -4,6 +4,7 @@ run script to train and test our neural model
 
 Usage:
     run_transformer.py train --train-src=<file> --train-tgt=<file> --dev-src=<file> --dev-tgt=<file> --vocab=<file> [options]
+    run_transformer.py test MODEL_PATH TEST_SOURCE_FILE TEST_TARGET_FILE OUTPUT_FILE [options]
 
 Options:
     -h --help                       show this screen.
@@ -12,22 +13,22 @@ Options:
     --dev-src=<file>                dev source file
     --dev-tgt=<file>                dev target file
     --vocab=<file>                  vocab file
-    --batch-size=<int>              batch size [default: 32]
+    --batch-size=<int>              batch size [default: 16]
     --embed-size=<int>              embedding size [default: 512]
     --hidden-size=<int>             hidden size [default: 2048]
-    --max-epoch=<int>               max epoch [default: 15]
+    --max-epoch=<int>               max epoch [default: 20]
     --patience=<int>                num epochs early stopping [default: 5]
-    --lr=<float>                    learning rate [default: 1e-3]
-    --lr-decay=<float>              learning rate decay [default: 0.5]
     --dropout=<float>               dropout rate [default: 0.1]
-    --save-model-to=<file>          save model path [default: trans_vanilla.pt] 
+    --save-model-to=<file>          save model path [default: trans_vanilla.pt]
+    --beam-size=<int>               beam size [default: 4]
+    --max-decoding-time-step=<int>  max number of decoding time steps [default: 50]
 """
 from __future__ import division
 
-import time
-import math
+import time, math
 from docopt import docopt
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from vocab import Vocab
@@ -65,6 +66,28 @@ def validate(model, dev_data, batch_size=32):
 
     return dev_loss
 
+def decode(model, test_data_src, beam_size, max_decoding_time_step):
+    """
+    run inference on model to generate target sentences
+    @param model (TransVanilla)
+    @param test_data_src (list[list[str]): list of test source sentences
+    @param beam_size (int): beam size
+    @param max_decoding_time_step (int): maximum decoding time steps
+    @return gen_tgt_sents (list[list[str]])
+    """
+    was_training = model.training
+    model.eval()
+
+    gen_tgt_sents = []
+    with torch.no_grad():
+        for src in test_data_src:
+            gen_tgt_sent = model.beam_search(src, beam_size, max_decoding_time_step)
+            gen_tgt_sents.append(gen_tgt_sent)
+
+    if was_training:
+        model.train
+    return gen_tgt_sents
+
 def train(args):
     """
     train our neural model
@@ -90,8 +113,9 @@ def train(args):
     model.train()
     model = model.to(device)
 
-    init_lr = float(args['--lr'])
-    optimizer = torch.optim.Adam(model.parameters(), lr=init_lr)
+    step_num, warmup_steps = 1, 4000
+    lr = int(args['--embed-size'])**-0.5 * min(step_num**-0.5, step_num * warmup_steps**-1.5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-09)
 
     cum_loss = .0
     cum_tgt_words = 0
@@ -102,7 +126,6 @@ def train(args):
     for epoch in range(int(args['--max-epoch'])):
         for src_sents, tgt_sents in batch_iter(train_data, batch_size=train_batch_size, shuffle=True):
             num_words_to_predict = sum(len(tgt_sent[1:]) for tgt_sent in tgt_sents)
-
             optimizer.zero_grad()
 
             batch_loss = -model(src_sents, tgt_sents).sum()
@@ -112,6 +135,11 @@ def train(args):
 
             cum_loss += batch_loss.item()
             cum_tgt_words += num_words_to_predict
+
+            step_num += 1
+            lr = int(args['--embed-size'])**-0.5 * min(step_num**-0.5, step_num * warmup_steps**-1.5)
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
 
         print('epoch = %d, loss = %.2f, time_elapsed = %.2f'
             % (epoch, cum_loss / cum_tgt_words, time.time() - begin_time))
@@ -128,6 +156,7 @@ def train(args):
             #reset patience
             patience = 0
             #save model
+            #model.module.save(model_save_path)
             model.save(model_save_path)
 
         else:
@@ -138,12 +167,29 @@ def train(args):
 
         print('validation: dev loss = %.2f' %(dev_loss))
 
-        #update lr after every 2 epochs
-        lr = init_lr / 2 ** (epoch // 2)
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr       
+def test(args):
+    """
+    test TransVanilla model by generating target sentences
+    @param args (dict): command line args
+    """
+    model = TransVanilla.load(args['MODEL_PATH'])
+    model = model.to(device)
+
+    test_data_src = read_corpus(args['TEST_SOURCE_FILE'], domain='src')
+    test_data_tgt = read_corpus(args['TEST_TARGET_FILE'], domain='tgt')
+    
+    gen_tgt_sents = decode(model, test_data_src, 
+                            beam_size=int(args['--beam-size']),
+                            max_decoding_time_step=int(args['--max-decoding-time-step']))
+
+    save_sents(gen_tgt_sents, args['OUTPUT_FILE'])
+
+    bleu_score = compute_bleu_score(refs=test_data_tgt, hyps=gen_tgt_sents)
+    print('BLEU score = %.2f' % (bleu_score))
 
 if __name__ == "__main__":
     args = docopt(__doc__)
     if args['train']:
         train(args)
+    elif args['test']:
+        test(args)
