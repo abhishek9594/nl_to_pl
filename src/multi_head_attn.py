@@ -5,23 +5,25 @@ import torch.nn.functional as F
 
 import math
 
+from utils import clone
+
 class MultiHeadAttn(nn.Module):
     def __init__(self, d_model, num_heads=8):
         super(MultiHeadAttn, self).__init__()
         self.num_heads = num_heads
         d_k = d_v = d_model // self.num_heads
-        self.query_project = nn.Linear(d_model, d_k, bias=False)
-        self.key_project = nn.Linear(d_model, d_k, bias=False)
-        self.value_project = nn.Linear(d_model, d_v, bias=False)
+        self.query_projects = clone(nn.Linear(d_model, d_k, bias=False), n=num_heads)
+        self.key_projects = clone(nn.Linear(d_model, d_k, bias=False), n=num_heads)
+        self.value_projects = clone(nn.Linear(d_model, d_v, bias=False), n=num_heads)
         self.out_project = nn.Linear(self.num_heads * d_v, d_model, bias=False)
 
     def forward(self, query, key, value, mask):
-        query_mapped = self.query_project(query)
-        key_mapped = self.key_project(key)
-        value_mapped = self.value_project(value)
         attn_outs = []
         q_key_dots = []
-        for _ in range(self.num_heads):
+        for h in range(self.num_heads):
+            query_mapped = self.query_projects[h](query)
+            key_mapped = self.key_projects[h](key)
+            value_mapped = self.value_projects[h](value)
             attn_out, q_key_dot = self.attn(query_mapped, key_mapped, value_mapped, mask)
             attn_outs.append(attn_out)
             q_key_dots.append(q_key_dot)
