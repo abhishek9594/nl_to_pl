@@ -20,10 +20,13 @@ class MultiHeadAttn(nn.Module):
         key_mapped = self.key_project(key)
         value_mapped = self.value_project(value)
         attn_outs = []
+        q_key_dots = []
         for _ in range(self.num_heads):
-            attn_outs.append(self.attn(query_mapped, key_mapped, value_mapped, mask))
+            attn_out, q_key_dot = self.attn(query_mapped, key_mapped, value_mapped, mask)
+            attn_outs.append(attn_out)
+            q_key_dots.append(q_key_dot)
         out = torch.cat([attn_out for attn_out in attn_outs], dim=-1).to(query.device)
-        return self.out_project(out)
+        return self.out_project(out), q_key_dots
 
     def attn(self, query, key, value, mask):
         d_k = key.shape[-1]
@@ -31,4 +34,4 @@ class MultiHeadAttn(nn.Module):
         scores = torch.bmm(query, key.permute(0, 2, 1)) / math.sqrt(d_k) #(b, Q, K)
         if mask is not None: scores = scores.masked_fill(mask == 0, -float('inf'))
         p_attn = F.softmax(scores, dim=-1)
-        return torch.bmm(p_attn, value) #(b, Q, d_v)
+        return torch.bmm(p_attn, value), scores #(b, Q, d_v)

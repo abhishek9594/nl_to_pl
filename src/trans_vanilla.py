@@ -53,13 +53,13 @@ class TransVanilla(nn.Module):
     def encode(self, src, src_mask=None):
         x = self.pe(self.embeddings.src_embedding(src))
         for encoder in self.encoder_blocks:
-            x = encoder(x, src_mask)
+            x, _ = encoder(x, src_mask)
         return x
 
     def decode(self, src_encoded, tgt, src_mask=None, tgt_mask=None):
         x = self.pe(self.embeddings.tgt_embedding(tgt))
         for decoder in self.decoder_blocks:
-            x = decoder(src_encoded, x, src_mask, tgt_mask)
+            x, _, _ = decoder(src_encoded, x, src_mask, tgt_mask)
         return self.vocab_project(x)
 
     def beam_search(self, src_sent, beam_size, max_decoding_time_step):
