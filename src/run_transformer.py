@@ -113,9 +113,8 @@ def train(args):
     model.train()
     model = model.to(device)
 
-    step_num, warmup_steps = 1, 4000
-    lr = int(args['--embed-size'])**-0.5 * min(step_num**-0.5, step_num * warmup_steps**-1.5)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-09)
+    init_lr = 1e-4
+    optimizer = torch.optim.Adam(model.parameters(), lr=init_lr, betas=(0.9, 0.98), eps=1e-09)
 
     cum_loss = .0
     cum_tgt_words = 0
@@ -135,12 +134,7 @@ def train(args):
 
             cum_loss += batch_loss.item()
             cum_tgt_words += num_words_to_predict
-
-            step_num += 1
-            lr = int(args['--embed-size'])**-0.5 * min(step_num**-0.5, step_num * warmup_steps**-1.5)
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
-
+            
         print('epoch = %d, loss = %.2f, time_elapsed = %.2f'
             % (epoch, cum_loss / cum_tgt_words, time.time() - begin_time))
         #reset epoch progress vars
@@ -166,6 +160,11 @@ def train(args):
                 return
 
         print('validation: dev loss = %.2f' %(dev_loss))
+
+        #update lr after every 2 epochs
+        lr = init_lr / 2 ** (epoch // 2)
+        for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
 
 def test(args):
     """
