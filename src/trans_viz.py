@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 #written in notebook style
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn
 import torch
