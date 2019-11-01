@@ -19,6 +19,7 @@ Options:
     --max-epoch=<int>               max epoch [default: 20]
     --patience=<int>                num epochs early stopping [default: 5]
     --dropout=<float>               dropout rate [default: 0.1]
+    --lr=<float>                    learning rate [default: 1e-4]
     --save-model-to=<file>          save model path [default: trans_vanilla.pt]
     --beam-size=<int>               beam size [default: 4]
     --max-decoding-time-step=<int>  max number of decoding time steps [default: 50]
@@ -113,7 +114,7 @@ def train(args):
     model.train()
     model = model.to(device)
 
-    init_lr = 1e-4
+    init_lr = float(args['--lr'])
     optimizer = torch.optim.Adam(model.parameters(), lr=init_lr, betas=(0.9, 0.98), eps=1e-09)
 
     cum_loss = .0
