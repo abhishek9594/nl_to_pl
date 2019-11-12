@@ -36,4 +36,4 @@ class MultiHeadAttn(nn.Module):
         scores = torch.bmm(query, key.permute(0, 2, 1)) / math.sqrt(d_k) #(b, Q, K)
         if mask is not None: scores = scores.masked_fill(mask == 0, -float('inf'))
         p_attn = F.softmax(scores, dim=-1)
-        return torch.bmm(p_attn, value), scores #(b, Q, d_v)
+        return torch.bmm(p_attn, value), p_attn #(b, Q, d_v)
