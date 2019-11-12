@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 #written in notebook style
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn
 import torch
@@ -43,14 +45,14 @@ if __name__ == "__main__":
 
             y = model.pe(model.embeddings.tgt_embedding(tgt))
             for layer, decoder in enumerate(model.decoder_blocks):
-                y, q_key_dots, q_key_mask_dots = decoder(x, y)
+                y, q_key_dots, q_key_src_dots = decoder(x, y)
                 if layer < num_blocks - 1 and layer % 2 != 0: continue 
                 fig1, axis1 = plt.subplots(1, len(q_key_dots), figsize=(20, 10))
-                fig2, axis2 = plt.subplots(1, len(q_key_mask_dots), figsize=(20, 10))
-                for i, (q_key_dot, q_key_mask_dot) in enumerate(zip(q_key_dots, q_key_mask_dots)):
+                fig2, axis2 = plt.subplots(1, len(q_key_src_dots), figsize=(20, 10))
+                for i, (q_key_dot, q_key_src_dot) in enumerate(zip(q_key_dots, q_key_src_dots)):
                     draw(q_key_dot.squeeze(0).data, 
                         tgt_sent, tgt_sent if i ==0 else [], ax=axis1[i])
-                    draw(q_key_mask_dot.squeeze(0).data, 
+                    draw(q_key_src_dot.squeeze(0).data, 
                         x=src_sent, y=tgt_sent if i ==0 else [], ax=axis2[i])
                 fig1.savefig('../results/ex_' + str(sent_num+1) + '_decoder_layer_' + str(layer+1) + '.eps')
                 fig2.savefig('../results/ex_' + str(sent_num+1) + '_enc_dec_layer_' + str(layer+1) + '.eps')
