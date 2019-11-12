@@ -35,10 +35,14 @@ def map_src_tgt(src, tgt, vocab, device):
     for src_sent, tgt_sent in zip(src, tgt):
         unk_word_idx = map_src_words_tgt(src_sent, tgt_sent, vocab)
         tgt_copy.append([vocab.tgt[word] if word not in unk_word_idx else len(vocab.tgt) + unk_word_idx[word] for word in tgt_sent])
-        src_ids.append([[vocab.tgt[word] if word not in unk_word_idx else len(vocab.tgt) + unk_word_idx[word] for word in src_sent]] * len(tgt_sent))
-        max_unk_src_words = max(max_unk_src_words, max(unk_word_idx.keys() + 1))
+        src_ids.append([vocab.tgt[word] if word not in unk_word_idx else len(vocab.tgt) + unk_word_idx[word] for word in src_sent])
+        if len(unk_word_idx):
+            max_unk_src_words = max(max_unk_src_words, max(unk_word_idx.values()) + 1)
     tgt_copy_padded = pad_sents(tgt_copy, vocab.tgt['<pad>'])
-    return tgt_copy_padded.to(device), torch.tensor(src_ids, dtype=torch.long, device=device), max_unk_src_words
+    src_ids_padded = pad_sents(src_ids)
+    max_tgt_len = max(len(tgt_sent) for tgt_sent in tgt)
+    src_ids_expand = [[src_ids_padded[i]] * max_tgt_len for i in range(len(src_ids_padded))]
+    return torch.tensor(tgt_copy_padded, dtype=torch.long, device=device), torch.tensor(src_ids_expand, dtype=torch.long, device=device), max_unk_src_words
 
 def map_src_words_tgt(src_sent, tgt_sent, vocab):
     unk_word_idx = dict()
