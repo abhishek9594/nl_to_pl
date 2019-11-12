@@ -116,30 +116,6 @@ class VocabEntry(object):
         sents_tensor = torch.tensor(sents_padded, dtype=torch.long)
         return sents_tensor
 
-    def tgt_sents2Tensor(self, src_sents, tgt_sents, device):
-        """
-        Convert list of target sentences to tensor by capturing the copied source words and padding required sentences
-        @param src_sents (list[list[str]]): list of source sentences
-        @param tgt_sents (list[list[str]]): list of target sentences
-        @return sents_tensor (torch.tensor(max_tgt_sent_len, b))
-        """
-        word_ids = []
-        for src_sent, tgt_sent in zip(src_sents, tgt_sents):
-            copy_word_map = dict()
-            copy_word_pos = 0
-
-            for src_word in src_sent:
-                if src_word not in self and src_word not in copy_word_map:
-                    copy_word_map[src_word] = copy_word_pos
-                    copy_word_pos += 1
-           
-            word_ids.append([self[word] if word not in copy_word_map else copy_word_map[word] + len(self) for word in tgt_sent])
-            #word_ids.append([self[word] for word in tgt_sent])
-        sents_padded = pad_sents(word_ids, self['<pad>'])
-        sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
-        return torch.t(sents_tensor)
-
-
     @staticmethod
     def from_corpus(corpus, freq_cutoff):
         """ Given a corpus construct a Vocab Entry.
@@ -180,31 +156,6 @@ class Vocab(object):
         tgt = VocabEntry.from_corpus(tgt_sents, freq_cutoff)
 
         return Vocab(src, tgt)
-
-    def map_src_tgt(self, src_sents, device):
-        """
-        map source sent word ids in target vocab domain
-        @param src_sents (list[list[str]]): list of source sentences
-        @return src_tgt_tensor(torch.tensor(max_src_sent_len, b))
-        @return max_unk_src_words (int): maximum number of unique source words not in target vocab
-        """
-        src_tgt_ids = []
-        max_unk_src_words = 0
-        for src_sent in src_sents:
-            copy_word_map = dict()
-            copy_word_pos = 0
-
-            for src_word in src_sent:
-                if src_word not in self.tgt and src_word not in copy_word_map:
-                    copy_word_map[src_word] = copy_word_pos
-                    copy_word_pos += 1
-           
-            src_tgt_ids.append([self.tgt[word] if word not in copy_word_map else copy_word_map[word] + len(self.tgt) for word in src_sent])
-            #src_tgt_ids.append([self.tgt[word] for word in src_sent])
-            max_unk_src_words = max(max_unk_src_words, max(src_tgt_ids[-1]) - (len(self.tgt) - 1))
-        sents_padded = pad_sents(src_tgt_ids, self.tgt['<pad>'])
-        src_tgt_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
-        return src_tgt_tensor, max_unk_src_words
 
     def save(self, file_path):
         """ Save Vocab to file as pickle dump.
