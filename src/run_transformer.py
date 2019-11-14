@@ -20,7 +20,7 @@ Options:
     --patience=<int>                num epochs early stopping [default: 5]
     --dropout=<float>               dropout rate [default: 0.1]
     --lr=<float>                    learning rate [default: 1e-4]
-    --save-model-to=<file>          save model path [default: trans_vanilla.pt]
+    --save-model-to=<file>          save model path [default: trans_copy.pt]
     --beam-size=<int>               beam size [default: 4]
     --max-decoding-time-step=<int>  max number of decoding time steps [default: 50]
 """
@@ -34,14 +34,14 @@ import torch.nn.functional as F
 
 from vocab import Vocab
 from utils import read_corpus, batch_iter, save_sents, compute_bleu_score
-from trans_vanilla import TransVanilla
+from trans_copy import TransCopy
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def validate(model, dev_data, batch_size=32):
     """
     validate model on dev set
-    @param model (TransVanilla)
+    @param model (TransCopy)
     @param dev_data (list[(list[str], list[str])]): list of tuples of source and target sentences
     @param batch_size (int): batch size
     @return dev_loss (float): cross entropy loss on dev set
@@ -70,7 +70,7 @@ def validate(model, dev_data, batch_size=32):
 def decode(model, test_data_src, beam_size, max_decoding_time_step):
     """
     run inference on model to generate target sentences
-    @param model (TransVanilla)
+    @param model (TransCopy)
     @param test_data_src (list[list[str]): list of test source sentences
     @param beam_size (int): beam size
     @param max_decoding_time_step (int): maximum decoding time steps
@@ -107,7 +107,7 @@ def train(args):
     model_save_path = args['--save-model-to']
     vocab = Vocab.load(args['--vocab'])
 
-    model = TransVanilla(embed_size=int(args['--embed-size']),
+    model = TransCopy(embed_size=int(args['--embed-size']),
                     hidden_size=int(args['--hidden-size']),
                     vocab=vocab,
                     dropout_rate=float(args['--dropout']))
@@ -135,7 +135,7 @@ def train(args):
 
             cum_loss += batch_loss.item()
             cum_tgt_words += num_words_to_predict
-            
+
         print('epoch = %d, loss = %.2f, time_elapsed = %.2f'
             % (epoch, cum_loss / cum_tgt_words, time.time() - begin_time))
         #reset epoch progress vars
@@ -169,10 +169,10 @@ def train(args):
 
 def test(args):
     """
-    test TransVanilla model by generating target sentences
+    test TransCopy model by generating target sentences
     @param args (dict): command line args
     """
-    model = TransVanilla.load(args['MODEL_PATH'])
+    model = TransCopy.load(args['MODEL_PATH'])
     model = model.to(device)
 
     test_data_src = read_corpus(args['TEST_SOURCE_FILE'], domain='src')
