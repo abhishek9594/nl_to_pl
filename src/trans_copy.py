@@ -11,24 +11,16 @@ from model_embeddings import ModelEmbeddings
 from positional_embeddings import PositionalEmbeddings
 from utils import map_src_tgt, map_src_words_tgt, subsequent_mask, clone
 
-class TransCopy(nn.Module):
+from trans_vanilla import TransVanilla
+
+class TransCopy(TransVanilla):
 
     def __init__(self, embed_size, hidden_size, vocab, dropout_rate):
-        super(TransCopy, self).__init__()
-        self.d_model = embed_size
-        self.d_ff = hidden_size
-        self.dropout_rate = dropout_rate
-        self.vocab = vocab
-        self.embeddings = ModelEmbeddings(self.d_model, self.vocab)
-        self.pe = PositionalEmbeddings(self.d_model, self.dropout_rate)
+        super(TransCopy, self).__init__(embed_size, hidden_size, vocab, dropout_rate)
 
         self.context_proj = nn.Linear(self.d_model, 1)
         self.dec_in_proj = nn.Linear(self.d_model, 1)
         self.dec_out_proj = nn.Linear(self.d_model, 1)
-
-        self.encoder_blocks = clone(TransEncoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
-        self.decoder_blocks = clone(TransDecoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
-        self.vocab_project = nn.Linear(self.d_model, len(self.vocab.tgt), bias=False)
 
     def forward(self, src, tgt, padx=0):
         """
@@ -65,12 +57,6 @@ class TransCopy(nn.Module):
             index=tgt_copy_padded[:, 1:].unsqueeze(-1)).squeeze(-1) * tgt_padded_mask[:, 1:]
         scores = tgt_predicted.sum(dim=0)
         return scores
-        
-    def encode(self, src, src_mask=None):
-        x = self.pe(self.embeddings.src_embedding(src))
-        for encoder in self.encoder_blocks:
-            x, _ = encoder(x, src_mask)
-        return x
 
     def decode(self, src_encoded, tgt, src_mask=None, tgt_mask=None):
         x = self.pe(self.embeddings.tgt_embedding(tgt))
@@ -165,32 +151,3 @@ class TransCopy(nn.Module):
         completed_hyps.sort(key=lambda (hyp, score): score, reverse=True)
         best_hyp = [str(word) for word in completed_hyps[0][0]]
         return best_hyp
-
-    @property
-    def device(self):
-        """
-        property decorator for device
-        """
-        return self.embeddings.src_embedding.weight.device
-
-    @staticmethod
-    def load(model_path):
-        """ 
-        @param model_path (str): path to model
-        """
-        params = torch.load(model_path, map_location=lambda storage, loc: storage)
-        args = params['args']
-        model = TransCopy(**args)
-        model.load_state_dict(params['state_dict'])
-        return model
-    
-    def save(self, path):
-        """ 
-        @param path (str): path to the model
-        """
-        params = {
-            'args': dict(embed_size=self.embeddings.embed_size, 
-            hidden_size=self.d_ff, vocab=self.vocab, dropout_rate=self.dropout_rate),
-            'state_dict': self.state_dict()
-        }
-        torch.save(params, path)
