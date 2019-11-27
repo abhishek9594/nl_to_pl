@@ -1,0 +1,210 @@
+#!/usr/bin/env python
+import ast
+
+def parseBoolOp(boolop):
+    if isinstance(boolop, ast.And):
+        return 'And'
+    else:
+        return 'Or'
+
+def parseOp(op):
+    if isinstance(op, ast.Add):
+        return 'Add'
+    elif isinstance(op, ast.Sub):
+        return 'Sub'
+    elif isinstance(op, ast.Mult):
+        return 'Mult'
+    elif isinstance(op, ast.Div):
+        return 'Div'
+    elif isinstance(op, ast.Mod):
+        return 'Mod'
+    elif isinstance(op, ast.Pow):
+        return 'Pow'
+    elif isinstance(op, ast.LShift):
+        return 'LShift'
+    elif isinstance(op, ast.RShift):
+        return 'RShift'
+    elif isinstance(op, ast.BitOr):
+        return 'BitOr'
+    elif isinstance(op, ast.BitXor):
+        return 'BitXor'
+    elif isinstance(op, ast.BitAnd):
+        return 'BitAnd'
+    else:
+        return 'FloorDiv' 
+
+def parseCmpOp(cmpop):
+    if isinstance(cmpop, ast.Eq):
+        return 'Eq'
+    elif isinstance(cmpop, ast.NotEq):
+        return 'NotEq'
+    elif isinstance(cmpop, ast.Lt):
+        return 'Lt'
+    elif isinstance(cmpop, ast.LtE):
+        return 'LtE'
+    elif isinstance(cmpop, ast.Gt):
+        return 'Gt'
+    elif isinstance(cmpop, ast.GtE):
+        return 'GtE'
+    elif isinstance(cmpop, ast.Is):
+        return 'Is'
+    elif isinstance(cmpop, ast.IsNot):
+        return 'IsNot'
+    elif isinstance(cmpop, ast.In):
+        return 'In'
+    else:
+        return 'NotIn'
+
+def parseKeyword(keyword):
+    """
+    (ident arg, expr value)
+    """
+    return '( ' + str(keyword.arg) + ' ' + parseExp(keyword.value) + ' )'
+
+def parseBool(exp):
+    """
+    BoolOp(boolop op, expr * values)
+    """
+    return parseBoolOp(exp.op) + ' ' + ' '.join([parseExp(value) for value in exp.values])
+
+def parseBin(exp):
+    """
+    BinOp(expr left, operator op, expr right)
+    """
+    return parseOp(exp.op) + ' ' + parseExp(exp.left) + ' ' + parseExp(exp.right)
+
+def parseIf(exp):
+    """
+    IfExp(expr test, expr body, expr orelse)
+    """
+    return parseExp(test) + ' ' + parseExp(body) + ' ' + parseExp(orelse)
+
+def parseDict(exp):
+    """
+    Dict(expr* keys, expr* values)
+    """
+    return 'Dict ( ' + ' '.join([parseExp(key) for key in exp.keys]) + ' ' + ' '.join([parseExp(value) for value in exp.values]) + ' )'
+
+def parseComp(exp):
+    """
+    Compare(expr left, cmpop* ops, expr* comparators)
+    """
+    return ' '.join([parseCmpOp(op) for op in exp.ops]) + ' ' + parseExp(exp.left) + ' ' + ' '.join([parseExp(comparator) for comparator in exp.comparators])
+
+def parseFunCall(exp):
+    """
+    Call(expr func, expr* args, keyword* keywords)
+    """
+    return 'FunCall ' + parseExp(exp.func) + ' ' + ' '.join([parseExp(arg) for arg in exp.args]) + ' ' + ' '.join([parseKeyword(keyword) for keyword in exp.keywords])
+
+def parseNum(exp):
+    """
+    Num(object n)
+    """
+    return str(exp.n)
+
+def parseStr(exp):
+    """
+    Str(string s)
+    """
+    return exp.s
+
+def parseAttr(exp):
+    """
+    Attribute(expr value, ident attr, _)
+    """
+    return '( ' + parseExp(exp.value) + ' ' + exp.attr + ' ) '
+
+def parseSubscript(exp):
+    """
+    Subscript(expr value, slice slice, _)
+    """
+    return '( ' + parseExp(exp.value) + ' ' + parseSlice(exp.slice) + ' ) '
+
+def parseName(exp):
+    """
+    Name(ident id, _)
+    """
+    return exp.id
+
+def parseList(exp):
+    """
+    List(expr* elts, _)
+    """
+    return 'List ( ' + ' '.join([parseExp(elt) for elt in exp.elts]) + ' )'
+
+def parseTup(exp):
+    """
+    Tuple(expr* elts, _)
+    """
+    return 'Tup ( ' + ' '.join([parseExp(elt) for elt in exp.elts]) + ' ) '
+
+def parseSlice(exp):
+    return parseExp(exp.value)
+
+def parseArgs(args):
+    """
+    (expr* args, ident? vararg, ident? kwarg, expr* defaults)
+    """
+    vararg = args.vararg if args.vararg else ''
+    kwarg = args.kwarg if args.kwarg else ''
+    return ' '.join([parseExp(arg) for arg in args.args]) + ' ' + vararg + ' ' + kwarg + ' ' + ' '.join([parseExp(default) for default in args.defaults])
+
+def parseExp(exp):
+    if isinstance(exp, ast.BoolOp):
+        return parseBool(exp)
+    elif isinstance(exp, ast.BinOp):
+        return parseBin(exp)
+    elif isinstance(exp, ast.IfExp):
+        return 'If ' + parseIf(exp)
+    elif isinstance(exp, ast.Dict):
+        return parseDict(exp)
+    elif isinstance(exp, ast.Compare):
+        return parseComp(exp)
+    elif isinstance(exp, ast.Call):
+        return parseFunCall(exp)
+    elif isinstance(exp, ast.Num):
+        return parseNum(exp)
+    elif isinstance(exp, ast.Str):
+        return parseStr(exp)
+    elif isinstance(exp, ast.Attribute):
+        return parseAttr(exp)
+    elif isinstance(exp, ast.Subscript):
+        return parseSubscript(exp)
+    elif isinstance(exp, ast.Name):
+        return parseName(exp)
+    elif isinstance(exp, ast.List):
+        return parseList(exp)
+    elif isinstance(exp, ast.Tuple):
+        return parseTup(exp)
+    else:
+        #print('un-matched: ' + exp)
+        return ' '
+
+def parseSent(pl_sent):
+    stmt = ast.parse(pl_sent).body[0]
+    if isinstance(stmt, ast.If):
+        return 'If ' + parseExp(stmt.test)
+
+    elif isinstance(stmt, ast.For):
+        #For(expr target, expr iter, _, _)
+        return 'For ' + parseExp(stmt.target) + ' ' + parseExp(stmt.iter)
+
+    elif isinstance(stmt, ast.While):
+        #While(expr test, _, _)
+        return 'While ' + parseExp(stmt.test)
+
+    elif isinstance(stmt, ast.FunctionDef):
+        #FunctionDef(ident name, arguments args, _, _)
+        return 'FunctionDef ' + stmt.name + ' ' + parseArgs(stmt.args)
+
+    elif isinstance(stmt, ast.Assign):
+        #Assign(expr* targets, expr value)
+        return 'Assign ' + ' '.join([parseExp(target) for target in stmt.targets]) + ' ' + parseExp(stmt.value)
+
+    elif isinstance(stmt, ast.AugAssign):
+        #AugAssign(expr target, operator op, expr value)
+        return 'AugAssign ' + parseExp(stmt.target) + ' ' + parseOp(stmt.op) + ' ' + parseExp(stmt.value)
+
+    else:
+        return parseExp(stmt.value)
