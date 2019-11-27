@@ -55,12 +55,6 @@ def parseCmpOp(cmpop):
     else:
         return 'NotIn'
 
-def parseKeyword(keyword):
-    """
-    (ident arg, expr value)
-    """
-    return '( ' + str(keyword.arg) + ' ' + parseExp(keyword.value) + ' )'
-
 def parseBool(exp):
     """
     BoolOp(boolop op, expr * values)
@@ -71,7 +65,13 @@ def parseBin(exp):
     """
     BinOp(expr left, operator op, expr right)
     """
-    return parseOp(exp.op) + ' ' + parseExp(exp.left) + ' ' + parseExp(exp.right)
+    return parseOp(exp.op) + ' ( ' + parseExp(exp.left) + ' ' + parseExp(exp.right) + ' )'
+
+def parseLambda(exp):
+    """
+    Lambda(arguments args, expr body)
+    """
+    return parseArgs(exp.args) + ' ' + parseExp(exp.body)
 
 def parseIf(exp):
     """
@@ -85,7 +85,26 @@ def parseDict(exp):
     """
     return 'Dict ( ' + ' '.join([parseExp(key) for key in exp.keys]) + ' ' + ' '.join([parseExp(value) for value in exp.values]) + ' )'
 
-def parseComp(exp):
+def parseListComp(exp):
+    """
+    ListComp(expr elt, comprehension* generators)
+    """
+    return 'List ( ' + parseExp(exp.elt) + ' ' + ' '.join([parseComp(gen) for gen in exp.generators]) + ' )'
+
+def parseDictComp(exp):
+    """
+    DictComp(expr key, expr value, comprehension* generators)
+    """
+    return 'Dict ( ' + '( ' + parseExp(exp.key) + ' ' + parseExp(exp.value) + ' ) ' + ' '.join([parseComp(gen) for gen in exp.generators]) + ' )'
+
+def parseYield(exp):
+    """
+    Yield(expr? value)
+    """
+    if exp.value: return 'Yield ' + parseExp(exp.value)
+    else: return 'Yield'
+
+def parseCmp(exp):
     """
     Compare(expr left, cmpop* ops, expr* comparators)
     """
@@ -113,13 +132,13 @@ def parseAttr(exp):
     """
     Attribute(expr value, ident attr, _)
     """
-    return '( ' + parseExp(exp.value) + ' ' + exp.attr + ' ) '
+    return '( . ' + parseExp(exp.value) + ' ' + exp.attr + ' ) '
 
 def parseSubscript(exp):
     """
     Subscript(expr value, slice slice, _)
     """
-    return '( ' + parseExp(exp.value) + ' ' + parseSlice(exp.slice) + ' ) '
+    return '( _ ' + parseExp(exp.value) + ' ' + parseSlice(exp.slice) + ' ) '
 
 def parseName(exp):
     """
@@ -146,21 +165,50 @@ def parseArgs(args):
     """
     (expr* args, ident? vararg, ident? kwarg, expr* defaults)
     """
-    vararg = args.vararg if args.vararg else ''
-    kwarg = args.kwarg if args.kwarg else ''
-    return ' '.join([parseExp(arg) for arg in args.args]) + ' ' + vararg + ' ' + kwarg + ' ' + ' '.join([parseExp(default) for default in args.defaults])
+    vararg = args.vararg + ' ' if args.vararg else ''
+    kwarg = args.kwarg + ' ' if args.kwarg else ''
+    return ' '.join([parseExp(arg) for arg in args.args]) + ' ' + vararg + kwarg + ' '.join([parseExp(default) for default in args.defaults])
+
+def parseComp(comp):
+    """
+    (expr target, expr iter, expr* ifs)
+    """
+    return parseExp(comp.target) + ' ' + parseExp(comp.iter) + ' ' + ' '.join([parseExp(ifc) for ifc in comp.ifs])
+
+def parseKeyword(keyword):
+    """
+    (ident arg, expr value)
+    """
+    return '( = ' + str(keyword.arg) + ' ' + parseExp(keyword.value) + ' )'
+
+def parseAlias(alias):
+    """
+    (ident name, ident? asname)
+    """
+    if alias.asname:
+        return '( as ' + alias.name + ' ' + alias.asname + ' )'
+    else:
+        return alias.name
 
 def parseExp(exp):
     if isinstance(exp, ast.BoolOp):
         return parseBool(exp)
     elif isinstance(exp, ast.BinOp):
         return parseBin(exp)
+    elif isinstance(exp, ast.Lambda):
+        return parseLambda(exp)
     elif isinstance(exp, ast.IfExp):
         return 'If ' + parseIf(exp)
     elif isinstance(exp, ast.Dict):
         return parseDict(exp)
+    elif isinstance(exp, ast.ListComp):
+        return parseListComp(exp)
+    elif isinstance(exp, ast.DictComp):
+        return parseDictComp(exp)
+    elif isinstance(exp, ast.Yield):
+        return parseYield(exp)
     elif isinstance(exp, ast.Compare):
-        return parseComp(exp)
+        return parseCmp(exp)
     elif isinstance(exp, ast.Call):
         return parseFunCall(exp)
     elif isinstance(exp, ast.Num):
@@ -178,13 +226,22 @@ def parseExp(exp):
     elif isinstance(exp, ast.Tuple):
         return parseTup(exp)
     else:
-        #print('un-matched: ' + exp)
         return ' '
 
 def parseSent(pl_sent):
     stmt = ast.parse(pl_sent).body[0]
-    if isinstance(stmt, ast.If):
-        return 'If ' + parseExp(stmt.test)
+    if isinstance(stmt, ast.FunctionDef):
+        #FunctionDef(ident name, arguments args, _, _)
+        return 'FunDef ' + stmt.name + ' ' + parseArgs(stmt.args)
+
+    elif isinstance(stmt, ast.ClassDef):
+        #ClassDef(ident name, expr* bases, _, _)
+        return 'ClassDef ' + stmt.name + ' ' + ' '.join([parseExp(base) for base in stmt.bases])
+
+    elif isinstance(stmt, ast.Return):
+        #Return(expr? value)
+        if stmt.value: return 'Return ' + parseExp(stmt.value)
+        else: return 'Return'
 
     elif isinstance(stmt, ast.For):
         #For(expr target, expr iter, _, _)
@@ -194,9 +251,8 @@ def parseSent(pl_sent):
         #While(expr test, _, _)
         return 'While ' + parseExp(stmt.test)
 
-    elif isinstance(stmt, ast.FunctionDef):
-        #FunctionDef(ident name, arguments args, _, _)
-        return 'FunctionDef ' + stmt.name + ' ' + parseArgs(stmt.args)
+    elif isinstance(stmt, ast.If):
+        return 'If ' + parseExp(stmt.test)
 
     elif isinstance(stmt, ast.Assign):
         #Assign(expr* targets, expr value)
@@ -206,5 +262,19 @@ def parseSent(pl_sent):
         #AugAssign(expr target, operator op, expr value)
         return 'AugAssign ' + parseExp(stmt.target) + ' ' + parseOp(stmt.op) + ' ' + parseExp(stmt.value)
 
-    else:
+    elif isinstance(stmt, ast.Expr):
+        #Expr(expr value)
         return parseExp(stmt.value)
+
+    elif isinstance(stmt, ast.Import):
+        #Import(alias* names)
+        return 'Import ' + ' '.join([parseAlias(name) for name in stmt.names])
+
+    elif isinstance(stmt, ast.ImportFrom):
+        #ImportFrom(ident? module, alias* names, int? level)
+        module = stmt.module + ' ' if stmt.module else ''
+        level = '( L ' + str(stmt.level) + ' ) ' if stmt.level else ''
+        return 'ImportFrom ' + level + module + ' '.join([parseAlias(name) for name in stmt.names]) 
+
+    else:
+        return ' '
