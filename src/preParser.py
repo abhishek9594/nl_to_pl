@@ -290,7 +290,7 @@ def parseExp(exp):
         return parseTup(exp)
     else:
         #matches all the above case for 2.7.17 version
-        return ' Nil123 '
+        return ' '
 
 def parseSent(pl_sent):
     stmt = ast.parse(pl_sent).body[0]
