@@ -166,7 +166,7 @@ def parseStr(exp):
     """
     Str(string s)
     """
-    return exp.s
+    return '\'' + exp.s + '\''
 
 def parseAttr(exp):
     """
