@@ -208,7 +208,7 @@ def parseSlice(exp):
         lower = parseExp(exp.lower) + ' ' if exp.lower else ''
         upper = parseExp(exp.upper) + ' ' if exp.upper else ''
         step = parseExp(exp.step) + ' ' if exp.step else ''
-        return '( ' + lower + upper + step + ' )'
+        return '( ' + lower + upper + step + ' : )'
     elif hasattr(exp, 'dims'):
         return ' '.join([parseSlice(dim) for dim in exp.dims])
     else:
@@ -220,7 +220,7 @@ def parseArgs(args):
     """
     vararg = args.vararg + ' ' if args.vararg else ''
     kwarg = args.kwarg + ' ' if args.kwarg else ''
-    return ' '.join([parseExp(arg) for arg in args.args]) + ' ' + vararg + kwarg + ' '.join([parseExp(default) for default in args.defaults])
+    return ' '.join([parseExp(arg) for arg in args.args[:len(args.args) - len(args.defaults)]]) + ' ' + vararg + kwarg + ' '.join(['( ' + parseExp(defArg) + ' ' + parseExp(default) + ' = )' for defArg, default in zip(args.args[len(args.args) - len(args.defaults): ], args.defaults)])
 
 def parseComp(comp):
     """
