@@ -172,13 +172,13 @@ def parseAttr(exp):
     """
     Attribute(expr value, ident attr, _)
     """
-    return '( . ' + parseExp(exp.value) + ' ' + exp.attr + ' ) '
+    return '( . ' + parseExp(exp.value) + ' ' + exp.attr + ' )'
 
 def parseSubscript(exp):
     """
     Subscript(expr value, slice slice, _)
     """
-    return '( _ ' + parseExp(exp.value) + ' ' + parseSlice(exp.slice) + ' ) '
+    return '( _ ' + parseExp(exp.value) + ' ' + parseSlice(exp.slice) + ' )'
 
 def parseName(exp):
     """
@@ -196,7 +196,7 @@ def parseTup(exp):
     """
     Tuple(expr* elts, _)
     """
-    return 'Tup ( ' + ' '.join([parseExp(elt) for elt in exp.elts]) + ' ) '
+    return 'Tup ( ' + ' '.join([parseExp(elt) for elt in exp.elts]) + ' )'
 
 def parseSlice(exp):
     """
