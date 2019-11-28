@@ -75,7 +75,7 @@ def parseBin(exp):
     """
     BinOp(expr left, operator op, expr right)
     """
-    return parseOp(exp.op) + ' ( ' + parseExp(exp.left) + ' ' + parseExp(exp.right) + ' )'
+    return parseOp(exp.op) + ' ' + parseExp(exp.left) + ' ' + parseExp(exp.right)
 
 def parseUn(exp):
     """
@@ -142,7 +142,7 @@ def parseCmp(exp):
     """
     Compare(expr left, cmpop* ops, expr* comparators)
     """
-    return ' '.join([parseCmpOp(op) for op in exp.ops]) + ' ' + parseExp(exp.left) + ' ' + ' '.join([parseExp(comparator) for comparator in exp.comparators])
+    return parseCmpOp(exp.ops[0]) + ' ' + parseExp(exp.left) + ' ' + ' '.join([parseCmpOp(cmpop) + ' ' + parseExp(comparator) for cmpop, comparator in zip(exp.ops[1:], exp.comparators[:-1])]) + ' ' + parseExp(exp.comparators[-1])
 
 def parseFunCall(exp):
     """
@@ -290,7 +290,7 @@ def parseExp(exp):
         return parseTup(exp)
     else:
         #matches all the above case for 2.7.17 version
-        return ' '
+        return ' Nil123 '
 
 def parseSent(pl_sent):
     stmt = ast.parse(pl_sent).body[0]
