@@ -33,7 +33,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from vocab import Vocab
-from utils import read_corpus, batch_iter, save_sents, compute_bleu_score
+from utils import read_corpus, batch_iter, save_sents, compute_bleu_score, compute_exact_match
 from trans_copy import TransCopy
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -185,7 +185,8 @@ def test(args):
     save_sents(gen_tgt_sents, args['OUTPUT_FILE'])
 
     bleu_score = compute_bleu_score(refs=test_data_tgt, hyps=gen_tgt_sents)
-    print('BLEU score = %.2f' % (bleu_score))
+    em = compute_exact_match(refs=test_data_tgt, hyps=gen_tgt_sents)
+    print('BLEU score = %.2f, EM = %.2f' % (bleu_score, em))
 
 if __name__ == "__main__":
     args = docopt(__doc__)

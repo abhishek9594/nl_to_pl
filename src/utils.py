@@ -94,10 +94,24 @@ def compute_bleu_score(refs, hyps):
     @param hyps (list[list[str]]): list of generated candidate sents
     @return bleu_score (float): BLEU score for the word overlap
     """
+    assert len(refs) == len(hyps)
     bleu_score = corpus_bleu([[ref[1:-1]] for ref in refs],
                             hyps,
                             smoothing_function=SmoothingFunction().method4)
     return bleu_score
+
+def compute_exact_match(refs, hyps):
+    """
+    compute exact match for the given references against hypotheses
+    @param refs (list[list[str]]): list of reference sents with <start> and <eos>
+    @param hyps (list[list[str]]): list of generated candidate sents
+    @return em_score (float): exact match score
+    """
+    assert len(refs) == len(hyps)
+    em = 0
+    for ref, hyp in zip(refs, hyps):
+        if ref[1:-1] == hyp: em += 1
+    return em / len(refs)
 
 def batch_iter(data, batch_size, shuffle=False):
     """
