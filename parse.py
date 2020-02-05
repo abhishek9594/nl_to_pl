@@ -185,53 +185,28 @@ def sugar_code(code):
 
 
 def de_sugar_code(code, ref_raw_code):
+    code = code.strip()
     if code.endswith('def dummy():\n    pass'):
-        code = code.replace('def dummy():\n    pass', '').strip()
+        code = code.replace('def dummy():\n    pass', '')
 
     if p_elif.match(ref_raw_code):
         # remove leading if true
-        code = code.replace('if True:\n    pass', '').strip()
+        code = code.replace('if True:\n    pass', '')
     elif p_else.match(ref_raw_code):
         # remove leading if true
-        code = code.replace('if True:\n    pass', '').strip()
+        code = code.replace('if True:\n    pass', '')
 
     # try/catch/except stuff
     if p_try.match(ref_raw_code):
-        code = code.replace('except:\n    pass', '').strip()
+        code = code.replace('\nexcept:\n    pass', '')
     elif p_except.match(ref_raw_code):
-        code = code.replace('try:\n    pass', '').strip()
+        code = code.replace('try:\n    pass', '')
     elif p_finally.match(ref_raw_code):
-        code = code.replace('try:\n    pass', '').strip()
+        code = code.replace('try:\n    pass', '')
 
     # remove ending pass
     if code.endswith(':\n    pass'):
         code = code[:-len('\n    pass')]
-
-    return code
-
-
-def de_sugar_code_for_seq2seq(code, ref_raw_code):
-    if code.endswith('\ndef dummy(): pass'):
-        code = code.replace('\ndef dummy(): pass', '').strip()
-
-    if p_elif.match(ref_raw_code):
-        # remove leading if true
-        code = code.replace('if True: pass\n', '').strip()
-    elif p_else.match(ref_raw_code):
-        # remove leading if true
-        code = code.replace('if True: pass\n', '').strip()
-
-    # try/catch/except stuff
-    if p_try.match(ref_raw_code):
-        code = code.replace('pass\nexcept: pass', '').strip()
-    elif p_except.match(ref_raw_code):
-        code = code.replace('try: pass\n', '').strip()
-    elif p_finally.match(ref_raw_code):
-        code = code.replace('try: pass\n', '').strip()
-
-    # remove ending pass
-    if code.endswith(':pass'):
-        code = code[:-len('pass')]
 
     return code.strip()
 
@@ -268,7 +243,6 @@ def parse_raw(code):
 
     return tree
 
-
 if __name__ == '__main__':
     code = """
 class Demonwrath(SpellCard):
@@ -283,16 +257,16 @@ class Demonwrath(SpellCard):
             if minion.card.minion_type is not MINION_TYPE.DEMON:
                 minion.damage(player.effective_spell_damage(2), self)
 """
-    code = """else: x"""
+    code = """try:"""
     parse_tree = parse(code)
 
     rules =  parse_tree.to_rule()
 
-
     root_node = ASTNode('root')
     root_node, _ = decode_rule_to_tree(rules, root_node)
-    print root_node == parse_tree
+    print(root_node)
 
     
     ast_tree = parse_tree_to_python_ast(root_node)
-    print astor.to_source(ast_tree)
+    out_code = astor.to_source(ast_tree)
+    print(de_sugar_code(out_code, code))
