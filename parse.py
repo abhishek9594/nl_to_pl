@@ -2,8 +2,6 @@
 import ast
 import astor
 import re
-from cStringIO import StringIO
-from tokenize import generate_tokens
 
 from astnode import ASTNode
 from lang.py.grammar import is_compositional_leaf, PY_AST_NODE_FIELDS, NODE_FIELD_BLACK_LIST, is_builtin_type, is_terminal_ast_type
@@ -163,7 +161,7 @@ p_except = re.compile(r'^except\s?')
 p_finally = re.compile(r'^finally\s?')
 p_decorator = re.compile(r'^@.*')
 
-def canonicalize_code(code):
+def sugar_code(code):
     if p_elif.match(code):
         code = 'if True: pass\n' + code
 
@@ -186,7 +184,7 @@ def canonicalize_code(code):
     return code
 
 
-def de_canonicalize_code(code, ref_raw_code):
+def de_sugar_code(code, ref_raw_code):
     if code.endswith('def dummy():\n    pass'):
         code = code.replace('def dummy():\n    pass', '').strip()
 
@@ -212,7 +210,7 @@ def de_canonicalize_code(code, ref_raw_code):
     return code
 
 
-def de_canonicalize_code_for_seq2seq(code, ref_raw_code):
+def de_sugar_code_for_seq2seq(code, ref_raw_code):
     if code.endswith('\ndef dummy(): pass'):
         code = code.replace('\ndef dummy(): pass', '').strip()
 
@@ -251,7 +249,7 @@ def parse(code):
     code -> AST tree -> AST tree to internal tree structure
     """
 
-    code = canonicalize_code(code)
+    code = sugar_code(code)
     py_ast = ast.parse(code)
 
     tree = python_ast_to_parse_tree(py_ast.body[0])
@@ -271,53 +269,6 @@ def parse_raw(code):
     return tree
 
 
-def tokenize_code(code):
-    token_stream = generate_tokens(StringIO(code).readline)
-    tokens = []
-    for toknum, tokval, (srow, scol), (erow, ecol), _ in token_stream:
-        if toknum == tk.ENDMARKER:
-            break
-        tokens.append(tokval)
-
-    return tokens
-
-
-def tokenize_code_adv(code, breakCamelStr=False):
-    token_stream = generate_tokens(StringIO(code).readline)
-    tokens = []
-    indent_level = 0
-    for toknum, tokval, (srow, scol), (erow, ecol), _ in token_stream:
-        if toknum == tk.ENDMARKER:
-            break
-
-        if toknum == tk.INDENT:
-            indent_level += 1
-            tokens.extend(['#INDENT#'] * indent_level)
-            continue
-        elif toknum == tk.DEDENT:
-            indent_level -= 1
-            tokens.extend(['#INDENT#'] * indent_level)
-            continue
-        elif len(tokens) > 0 and tokens[-1] == '\n' and tokval != '\n':
-            tokens.extend(['#INDENT#'] * indent_level)
-
-        if toknum == tk.STRING:
-            quote = tokval[0]
-            tokval = tokval[1:-1]
-            tokens.append(quote)
-
-        if breakCamelStr:
-            sub_tokens = re.sub(r'([a-z])([A-Z])', r'\1 #MERGE# \2', tokval).split(' ')
-            tokens.extend(sub_tokens)
-        else:
-            tokens.append(tokval)
-
-        if toknum == tk.STRING:
-            tokens.append(quote)
-
-    return tokens
-
-
 if __name__ == '__main__':
     code = """
 class Demonwrath(SpellCard):
@@ -332,8 +283,8 @@ class Demonwrath(SpellCard):
             if minion.card.minion_type is not MINION_TYPE.DEMON:
                 minion.damage(player.effective_spell_damage(2), self)
 """
-    #code = """def f(*args, ** kwargs):"""
-    parse_tree = parse_raw(code)
+    code = """else: x"""
+    parse_tree = parse(code)
 
     rules =  parse_tree.to_rule()
 
