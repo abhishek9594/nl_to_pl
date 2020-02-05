@@ -153,7 +153,7 @@ class ASTNode(object):
                 rules.append('GenToken[<eob>]')
             else:
                 curr_node_type = typename(curr_node.type)
-                curr_node_child = [typename(child.type) + ('' if child.label is None or is_builtin_type(child.type) else '[' + child.label + ']')  for child in curr_node.children]
+                curr_node_child = [typename(child.type) + ('' if child.label is None  else '[' + child.label + ']')  for child in curr_node.children]
                 rules.append(curr_node_type + ' -> ' + ' '.join(curr_node_child))
 
                 nodes.extend(curr_node.children[::-1])

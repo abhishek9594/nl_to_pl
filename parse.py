@@ -6,9 +6,11 @@ from cStringIO import StringIO
 from tokenize import generate_tokens
 
 from astnode import ASTNode
-from lang.py.grammar import is_compositional_leaf, PY_AST_NODE_FIELDS, NODE_FIELD_BLACK_LIST
+from lang.py.grammar import is_compositional_leaf, PY_AST_NODE_FIELDS, NODE_FIELD_BLACK_LIST, is_builtin_type, is_terminal_ast_type
 from lang.util import escape
 from lang.util import typename
+from lang.util import parse_rule, extract_val_GenToken
+
 
 def python_ast_to_parse_tree(node):
     assert isinstance(node, ast.AST)
@@ -69,6 +71,25 @@ def python_ast_to_parse_tree(node):
         tree.add_child(child)
 
     return tree
+
+def decode_rule_to_tree(rules, root, rule_num=0):
+    rule = rules[rule_num]
+    node_types_labels = parse_rule(rule)
+    for node_type, node_label in node_types_labels:
+        if is_builtin_type(node_type):
+            node_val = extract_val_GenToken(rules[rule_num + 1])
+            rule_num += 2 #skip node_val and GenToken[<eob>]
+            child_node = ASTNode(node_type, node_label, node_type(node_val))
+        elif is_terminal_ast_type(node_type):
+            rule_num += 1 #skip GenToken[<eob>]
+            child_node = ASTNode(node_type)
+        else:            
+            rule_num += 1
+            child_node = ASTNode(node_type, node_label)
+            child_node, rule_num = decode_rule_to_tree(rules, child_node, rule_num)
+            
+        root.add_child(child_node)
+    return root, rule_num
 
 def parse_tree_to_python_ast(tree):
     node_type = tree.type
@@ -135,35 +156,12 @@ def parse_tree_to_python_ast(tree):
 
     return ast_node
 
-
-def decode_tree_to_python_ast(decode_tree):
-    from lang.py.unaryclosure import compressed_ast_to_normal
-
-    compressed_ast_to_normal(decode_tree)
-    decode_tree = decode_tree.children[0]
-    terminals = decode_tree.get_leaves()
-
-    for terminal in terminals:
-        if terminal.value is not None and type(terminal.value) is str:
-            if terminal.value.endswith('<eos>'):
-                terminal.value = terminal.value[:-5]
-
-        if terminal.type in {int, float, str, bool}:
-            # cast to target data type
-            terminal.value = terminal.type(terminal.value)
-
-    ast_tree = parse_tree_to_python_ast(decode_tree)
-
-    return ast_tree
-
-
 p_elif = re.compile(r'^elif\s?')
 p_else = re.compile(r'^else\s?')
 p_try = re.compile(r'^try\s?')
 p_except = re.compile(r'^except\s?')
 p_finally = re.compile(r'^finally\s?')
 p_decorator = re.compile(r'^@.*')
-
 
 def canonicalize_code(code):
     if p_elif.match(code):
@@ -321,13 +319,29 @@ def tokenize_code_adv(code, breakCamelStr=False):
 
 
 if __name__ == '__main__':
-    code = """f(x, y=1)"""
+    code = """
+class Demonwrath(SpellCard):
+    def __init__(self):
+        super().__init__("Demonwrath", 3, CHARACTER_CLASS.WARLOCK, CARD_RARITY.RARE)
 
-    parse_tree = parse(code)
-    print(parse_tree)
+    def use(self, player, game):
+        super().use(player, game)
+        targets = copy.copy(game.other_player.minions)
+        targets.extend(game.current_player.minions)
+        for minion in targets:
+            if minion.card.minion_type is not MINION_TYPE.DEMON:
+                minion.damage(player.effective_spell_damage(2), self)
+"""
+    #code = """def f(*args, ** kwargs):"""
+    parse_tree = parse_raw(code)
 
     rules =  parse_tree.to_rule()
-    print(rules)
+
+
+    root_node = ASTNode('root')
+    root_node, _ = decode_rule_to_tree(rules, root_node)
+    print root_node == parse_tree
+
     
-    ast_tree = parse_tree_to_python_ast(parse_tree)
-    print(astor.to_source(ast_tree))
+    ast_tree = parse_tree_to_python_ast(root_node)
+    print astor.to_source(ast_tree)
