@@ -78,7 +78,7 @@ def decode_rule_to_tree(rules, root, rule_num=0):
             node_val = extract_val_GenToken(rules[rule_num + 1])
             rule_num += 2 #skip node_val and GenToken[<eob>]
             child_node = ASTNode(node_type, node_label, node_type(node_val))
-        elif is_terminal_ast_type(node_type):
+        elif is_terminal_ast_type(node_type) or node_type == 'epsilon':
             rule_num += 1 #skip GenToken[<eob>]
             child_node = ASTNode(node_type)
         else:            
