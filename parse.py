@@ -5,9 +5,7 @@ import re
 
 from astnode import ASTNode
 from lang.py.grammar import is_compositional_leaf, PY_AST_NODE_FIELDS, NODE_FIELD_BLACK_LIST, is_builtin_type, is_terminal_ast_type
-from lang.util import escape
-from lang.util import typename
-from lang.util import parse_rule, extract_val_GenToken
+from lang.util import typename, parse_rule, extract_val_GenToken
 
 
 def python_ast_to_parse_tree(node):
@@ -257,14 +255,13 @@ class Demonwrath(SpellCard):
             if minion.card.minion_type is not MINION_TYPE.DEMON:
                 minion.damage(player.effective_spell_damage(2), self)
 """
-    code = """try:"""
+    code = """backend = params . pop ( __STR1__ )"""
     parse_tree = parse(code)
 
     rules =  parse_tree.to_rule()
 
     root_node = ASTNode('root')
     root_node, _ = decode_rule_to_tree(rules, root_node)
-    print(root_node)
 
     
     ast_tree = parse_tree_to_python_ast(root_node)
