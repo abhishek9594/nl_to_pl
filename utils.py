@@ -12,7 +12,7 @@ def read_corpus(src_file, tgt_file):
     """
     extract input tokens using NLTK, whereas parse output tokens according to its syntax
     @param file_path (str): path to file containing corpus
-    @return data (list[(list[str], list[str])]): list of tuples of src and tgt tokens
+    @return data ((list[list[str]], list[list[str]])): tuples of list of src and tgt tokens
     @return sent_str_map {sent_num -> str_map{str -> str_repr}}: mapping sent_id to str_map (maps str_repr to str), useful for mapping quoted strings
     """
     src_data, tgt_data = [], []
@@ -38,13 +38,14 @@ def read_corpus(src_file, tgt_file):
         if len(str_map) > 0: sent_str_map[sent_num] = str_map
 
     for sent_num, tgt_sent in enumerate(open(tgt_file, 'r')):
+        tgt_sent = tgt_sent.rstrip()
         if sent_num in sent_str_map:
             for str_repr, str_literal in sent_str_map[sent_num].items():
-                tgt_sent.replace(str_literal, str_repr)
+                tgt_sent = tgt_sent.replace(str_literal, str_repr)
         tgt_data.append(tgt_sent)
         
     data = zip(src_data, tgt_data)
-    return data, sent_str_map
+    return (src_data, tgt_data), sent_str_map
 
 def save_sents(sents, file_path):
     """
