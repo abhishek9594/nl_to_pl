@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from __future__ import division
 
-import math, 
+import math
 import numpy as np
 import copy
 import torch
