@@ -255,7 +255,7 @@ class Demonwrath(SpellCard):
             if minion.card.minion_type is not MINION_TYPE.DEMON:
                 minion.damage(player.effective_spell_damage(2), self)
 """
-    code = """backend = params . pop ( __STR1__ )"""
+    code = """raise ImproperlyConfigured ( "You must define a '%s' cache" % DEFAULT_CACHE_ALIAS )"""
     parse_tree = parse(code)
 
     rules =  parse_tree.to_rule()
@@ -266,4 +266,6 @@ class Demonwrath(SpellCard):
     
     ast_tree = parse_tree_to_python_ast(root_node)
     out_code = astor.to_source(ast_tree)
-    print(de_sugar_code(out_code, code))
+    format_code = de_sugar_code(out_code, code)
+    final_code = format_code.replace('\n', '')
+    print(final_code)
