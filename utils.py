@@ -25,7 +25,7 @@ def read_corpus(src_file, tgt_file):
         for quote, raw_str in matches:
             if raw_str in str_set:
                 continue
-            str_repr = '_STR:%d_' % str_count
+            str_repr = '_STR%d_' % str_count
             str_literal = quote + raw_str + quote
             str_map[str_repr] = str_literal
             str_set.add(raw_str)
