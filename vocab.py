@@ -18,7 +18,9 @@ from itertools import chain
 import pickle
 import torch
 
-from utils import read_corpus, pad_sents
+from utils import read_corpus
+from nn.utils import pad_sents
+from parse import parse
 
 
 class VocabEntry(object):
@@ -31,9 +33,7 @@ class VocabEntry(object):
         else:
             self.word2id = dict()
             self.word2id['<pad>'] = 0       #Pad Token
-            self.word2id['<start>'] = 1     #Start Token
-            self.word2id['<eos>'] = 2       #End Token
-            self.word2id['<unk>'] = 3       #Unknown Token
+            self.word2id['<unk>'] = 1       #Unknown Token
         self.unk_id = self.word2id['<unk>']
         self.id2word = {v: k for k, v in self.word2id.items()}
 
@@ -187,10 +187,12 @@ if __name__ == '__main__':
     print('read in source sentences: %s' % args['--train-src'])
     print('read in target sentences: %s' % args['--train-tgt'])
 
-    src_sents = read_corpus(args['--train-src'], domain='src')
-    tgt_sents = read_corpus(args['--train-tgt'], domain='tgt')
+    (src_sents, tgt_sents), _ = read_corpus(args['--train-src'], args['--train-tgt'])
+    tgt_rules = [parse(code).to_rule() for code in tgt_sents]
+    tgt_tokens = [[token for token in rules if 'GenToken' in token] for rules in tgt_rules]
 
-    vocab = Vocab.build(src_sents, tgt_sents, int(args['--freq-cutoff']))
+
+    vocab = Vocab.build(src_sents, tgt_tokens, int(args['--freq-cutoff']))
     print('generated vocabulary, source %d words, target %d words' % (len(vocab.src), len(vocab.tgt)))
 
     vocab.save(args['VOCAB_FILE'])
