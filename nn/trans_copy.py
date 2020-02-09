@@ -9,7 +9,8 @@ from trans_encoder import TransEncoder
 from trans_decoder import TransDecoder
 from model_embeddings import ModelEmbeddings
 from positional_embeddings import PositionalEmbeddings
-from utils import src_tensor, tgt_tensors
+from utils import src_to_tensor, tgt_to_tensors, map_src_tgt_tokens, tgt_to_rules
+from utils import subsequent_mask
 
 from trans_vanilla import TransVanilla
 
@@ -27,44 +28,54 @@ class TransCopy(TransVanilla):
         src: (list[list[str]])
         tgt: (list[list[str]])
         """
-        src_padded = src_tensor(src, self.vocab.src, device=self.device)
-        src_mask = (src_padded != padx).unsqueeze(1)
-        src_encoded = self.encode(src_padded, src_mask)
+        src_tensor = src_to_tensor(src, self.vocab.src, device=self.device)
+        src_mask = (src_tensor != padx).unsqueeze(1)
+        src_encoded = self.encode(src_tensor, src_mask)
 
-        gen_toks_padded, nodes_padded = tgt_tensors(tgt, self.vocab.tgt, device)
-        tgt_mask = ((gen_toks_padded) != padx | (nodes_padded != padx)).unsqueeze(1)
+        gen_toks_tensor, nodes_tensor = tgt_to_tensors(tgt, self.vocab.tgt, device)
+        tgt_mask = ((gen_toks_tensor != padx) | (nodes_tensor != padx)).unsqueeze(1)
         subseq_mask = subsequent_mask(tgt_mask.shape[-1]).type_as(tgt_mask.data).to(self.device)
         tgt_mask = tgt_mask & subseq_mask
-        tgt_encoded, q_key_src_dots = self.decode(src_encoded, gen_toks_padded, nodes_padded, src_mask, tgt_mask)
+        tgt_encoded, q_key_src_dots = self.decode(src_encoded, gen_toks_tensor, nodes_tensor, src_mask, tgt_mask)
 
-        tgt_decoded = self.vocab_project(tgt_encoded)
-        P_vocab = F.softmax(tgt_decoded, dim=-1)
+        gen_toks_decoded = self.gen_tok_project(tgt_encoded)
+        P_gen_tok = F.softmax(gen_toks_decoded, dim=-1)
 
-        tgt_copy_padded, src_ids_map_tgt, max_unk_src_words = map_src_tgt(src, tgt, self.vocab, self.device)
+        rules_decoded = self.rule_project(tgt_encoded)
+        log_P_rules = F.log_softmax(rules_decoded, dim=-1)
+
+        tgt_gen_toks, src_ids_map_tgt, max_unk_src_words = map_src_tgt_tokens(src, tgt, self.vocab, self.device)
         A_QK = torch.sum(torch.stack(q_key_src_dots, dim=0), dim=0) / 8 #normalize by num heads
-        P_gen = self.p_gen(Y_e=src_encoded, A_QK=A_QK, tgt=tgt_input, Y_d=tgt_encoded)
-        P_gen_copy = torch.cat((torch.mul(P_gen.unsqueeze(-1) , P_vocab), torch.zeros(P_vocab.shape[0], P_vocab.shape[1], max_unk_src_words, device=self.device)), dim=-1)
+        P_gen = self.p_gen(Y_e=src_encoded, A_QK=A_QK, gen_toks=gen_toks_tensor, nodes=nodes_tensor, Y_d=tgt_encoded)
+        P_gen_copy = torch.cat((torch.mul(P_gen.unsqueeze(-1) , P_gen_tok), torch.zeros(P_gen_tok.shape[0], P_gen_tok.shape[1], max_unk_src_words, device=self.device)), dim=-1)
         P_copy =  torch.mul((1 - P_gen).unsqueeze(-1), A_QK) #(b, Q, K)
-        P_gen_copy = P_gen_copy.scatter_add(dim=-1, index=src_ids_map_tgt[:, 1:, :], source=P_copy)
-        
-        tgt_padded_mask = (tgt_padded != padx).float()
-        #compute cross-entropy between tgt_words and tgt_predicted_words
+        P_gen_copy = P_gen_copy.scatter_add(dim=-1, index=src_ids_map_tgt, source=P_copy)
+                
         copy_mask = (P_gen_copy != 0)
         P_gen_copy = P_gen_copy.masked_fill(copy_mask == 0, 1.0)
         log_P_gen_copy = torch.log(P_gen_copy)
-        tgt_predicted = torch.gather(log_P_gen_copy, dim=-1, 
-            index=tgt_copy_padded[:, 1:].unsqueeze(-1)).squeeze(-1) * tgt_padded_mask[:, 1:]
-        scores = tgt_predicted.sum(dim=0)
-        return scores
+        #compute cross-entropy loss between tgt_gen_toks and tgt_predicted_toks (log_p_gen_copy)
+        tgt_gen_toks_mask = (tgt_gen_toks != padx).float()
+        loss_gen_toks = torch.gather(log_P_gen_copy, dim=-1,
+            index=tgt_gen_toks.unsqueeze(-1)).squeeze(-1) * tgt_gen_toks_mask #(b, Q)
 
-    def decode(self, src_encoded, gen_toks_padded, nodes_padded, src_mask=None, tgt_mask=None):
-        x = self.pe(self.embeddings.gen_tok_embedding(gen_toks_padded) + self.embeddings.node_embedding(nodes_padded))
+        #compute cross-entropy loss between tgt_rules and tgt_predicted_rules (log_P_rules)
+        tgt_rules = tgt_to_rules(tgt, padx).to(self.device)
+        tgt_rules_mask = (tgt_rules != padx).float()
+        loss_rules = torch.gather(log_P_rules, dim=-1, 
+            index=tgt_rules.unsqueeze(-1)).squeeze(-1) * tgt_rules_mask #(b, Q)
+
+        loss = (loss_gen_toks + loss_rules).sum(dim=-1) #(b,)
+        return loss
+
+    def decode(self, src_encoded, gen_toks_tensor, nodes_tensor, src_mask=None, tgt_mask=None):
+        x = self.pe(self.embeddings.gen_tok_embedding(gen_toks_tensor) + self.embeddings.node_embedding(nodes_tensor))
         for decoder in self.decoder_blocks:
             x, _, q_key_src_dots = decoder(src_encoded, x, src_mask, tgt_mask)
         return x, q_key_src_dots
 
-    def p_gen(self, Y_e, A_QK, tgt, Y_d):
-        X_d = self.pe(self.embeddings.tgt_embedding(tgt))
+    def p_gen(self, Y_e, A_QK, gen_toks, nodes, Y_d):
+        X_d = self.pe(self.embeddings.gen_tok_embedding(gen_toks) + self.embeddings.node_embedding(nodes))
         return torch.sigmoid(self.context_proj(torch.bmm(A_QK, Y_e)) + self.dec_in_proj(X_d) + self.dec_out_proj(Y_d)).squeeze(-1)
 
     def beam_search(self, src_sent, beam_size, max_decoding_time_step):
@@ -74,6 +85,7 @@ class TransCopy(TransVanilla):
         @param beam_size (int)
         @param max_decoding_time_step (int): decode the hyp until <eos> or max decoding time step
         @return best_hyp (list[str]): best possible hyp
+        """
         """
         src_padded = self.vocab.src.sents2Tensor([src_sent]).to(self.device)
         src_encoded = self.encode(src_padded, src_mask=None)
@@ -150,6 +162,8 @@ class TransCopy(TransVanilla):
         completed_hyps.sort(key=lambda (hyp, score): score, reverse=True)
         best_hyp = [str(word) for word in completed_hyps[0][0]]
         return best_hyp
+        """
+        pass
     
     @staticmethod
     def load(model_path):

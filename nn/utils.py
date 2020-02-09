@@ -99,39 +99,48 @@ def pad_sents(sents, pad_id=0):
 
     return sents_padded
 
-def src_tensor(src_sents, src_vocab, device):
+def src_to_tensor(src_sents, src_vocab, device):
     word_ids = src_vocab.words2indices(sents)
     sents_padded = pad_sents(word_ids, src_vocab['<pad>'])
     sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
     return sents_tensor
 
-def tgt_tensors(tgt_sents, tgt_vocab, device):
+def tgt_to_tensors(tgt_sents, tgt_vocab, device):
     gen_tok_ids = [[tgt_vocab[tok] if 'GenToken' in tok else tgt_vocab['<pad>'] for tok in sent] for sent in tgt_sents]
     node_ids = [[tgt_vocab['<pad>'] if 'GenToken' in tok else NODE_MAP[tok[: tok.find('->') - 1]] for tok in sent] for sent in tgt_sents]
     gen_toks_padded = pad_sents(gen_tok_ids, tgt_vocab['<pad>'])
     nodes_padded = pad_sents(node_ids, NODE_MAP['<pad>'])
     return torch.tensor(gen_toks_padded, dtype=torch.long, device=device), torch.tensor(nodes_padded, dtype=torch.long, device=device)
 
-def map_src_tgt(src, tgt, vocab, device):
+def tgt_to_rules(tgt_sents, pad_id=0):
     """
-    map src words into tgt sent, and src words into tgt vocab
-    @return tgt_copy: tensor which accounts src_word for <unk> tokens (b, Q)
-    @return: src_ids_map_tgt: src_id -> TargetVocab(src_id) (b,Q,K)
+    map tgt_rule -> id and token -> pad_id
     """
-    tgt_copy, src_ids_map_tgt = [], []
+    rules = [[RULE_MAP[rule] for rule in sent if 'GenToken' not in rule] for sent in tgt_sents]
+    rules_padded = pad_sents(rules, pad_id)
+    return torch.tensor(rules_padded, dtype=torch.long)
+
+def map_src_tgt_tokens(src, tgt, vocab, device):
+    """
+    map tgt tokens to ids, and src tokens into tgt vocab
+    @return tgt_gen_toks: tensor mapping GenToken[`tok`] to ids, where `tok` could be in tgt_vocab or src_sent (b, Q)
+    @return: src_ids_map_tgt: tensor mapping src tokens to target space, src_id -> TargetVocab(src_id) (b,Q,K)
+    @return: max_unk_src_words: number of OOV tokens
+    """
+    tgt_gen_toks, src_ids_map_tgt = [], []
     max_unk_src_words = 0
     for src_sent, tgt_sent in zip(src, tgt):
         unk_word_idx = map_src_words_tgt(src_sent, vocab)
-        tgt_copy.append([vocab.tgt[word] if word not in unk_word_idx else len(vocab.tgt) + unk_word_idx[word] for word in tgt_sent])
+        tgt_gen_toks.append([vocab.tgt['<pad>'] if 'GenToken' not in word else vocab.tgt[word] if word not in unk_word_idx else len(vocab.tgt) + unk_word_idx[word] for word in tgt_sent])
         src_ids_map_tgt.append([vocab.tgt[wrapGenTok(word)] if wrapGenTok(word) not in unk_word_idx else len(vocab.tgt) + unk_word_idx[wrapGenTok(word)] for word in src_sent])
         if len(unk_word_idx):
             max_unk_src_words = max(max_unk_src_words, len(unk_word_idx))
-    tgt_copy_padded = pad_sents(tgt_copy, vocab.tgt['<pad>'])
+    tgt_gen_toks = pad_sents(tgt_gen_toks, vocab.tgt['<pad>'])
     src_ids_map_tgt_padded = pad_sents(src_ids_map_tgt, vocab.src['<pad>'])
     max_tgt_len = max(len(tgt_sent) for tgt_sent in tgt)
     #expand to adjust for Q length tgt_sent in (b,Q,K), as any word in a query (Q[i]) can come from src_sent
     src_ids_map_tgt_expand = [[src_ids_map_tgt_padded[i]] * max_tgt_len for i in range(len(src_ids_map_tgt_padded))]
-    return torch.tensor(tgt_copy_padded, dtype=torch.long, device=device), torch.tensor(src_ids_map_tgt_expand, dtype=torch.long, device=device), max_unk_src_words
+    return torch.tensor(tgt_gen_toks, dtype=torch.long, device=device), torch.tensor(src_ids_map_tgt_expand, dtype=torch.long, device=device), max_unk_src_words
 
 def map_src_words_tgt(src_sent, vocab):
     unk_word_idx = dict()

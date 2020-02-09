@@ -9,8 +9,8 @@ from trans_encoder import TransEncoder
 from trans_decoder import TransDecoder
 from model_embeddings import ModelEmbeddings
 from positional_embeddings import PositionalEmbeddings
-from utils import NODE_MAP
-from utils import src_tensor, tgt_tensor, 
+from utils import NODE_MAP, RULE_MAP
+from utils import src_to_tensor, tgt_to_tensors, 
 from utils import subsequent_mask, clone
 
 class TransVanilla(nn.Module):
@@ -26,7 +26,8 @@ class TransVanilla(nn.Module):
         
         self.encoder_blocks = clone(TransEncoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
         self.decoder_blocks = clone(TransDecoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
-        self.vocab_project = nn.Linear(self.d_model, len(self.vocab.tgt), bias=False)
+        self.gen_tok_project = nn.Linear(self.d_model, len(self.vocab.tgt), bias=False)
+        self.rule_project = nn.Linear(self.d_model, len(RULE_MAP), bias=False)
 
     def forward(self, src, tgt, padx=0):
         """
