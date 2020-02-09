@@ -16,10 +16,8 @@ from collections import Counter
 from docopt import docopt
 from itertools import chain
 import pickle
-import torch
 
 from utils import read_corpus
-from nn.utils import pad_sents
 from parse import parse
 
 
@@ -105,16 +103,6 @@ class VocabEntry(object):
         @return sents (list[str]): list of words
         """
         return [self.id2word[w_id] for w_id in word_ids]
-
-    def sents2Tensor(self, sents):
-        """Convert list of sentences to tensor by padding required sentences
-        @param sents (list[list[str]]): list of sentences
-        @return sents_tensor (torch.tensor(b, max_sent_len))
-        """
-        word_ids = self.words2indices(sents)
-        sents_padded = pad_sents(word_ids, self['<pad>'])
-        sents_tensor = torch.tensor(sents_padded, dtype=torch.long)
-        return sents_tensor
 
     @staticmethod
     def from_corpus(corpus, freq_cutoff):
