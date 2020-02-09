@@ -9,69 +9,73 @@ import torch
 import torch.nn as nn
 
 NODE_MAP = {
-    '<pad>' = 0,
-    'root' = 1,
-    'ImportFrom' = 2,
-    'alias*' = 3,
-    'alias' = 4,
-    'Import' = 5,
-    'Assign' = 6,
-    'expr*' = 7,
-    'expr' = 8,
-    'Name' = 9,
-    'List' = 10,
-    'If' = 11,
-    'Compare' = 12,
-    'cmpop*' = 13,
-    'cmpop' = 14,
-    'Attribute' = 15,
-    'stmt*' = 16,
-    'stmt' = 17,
-    'Raise' = 18,
-    'Call' = 19,
-    'BinOp' = 20,
-    'operator' = 21,
-    'FunctionDef' = 22,
-    'arguments' = 23,
-    'Expr' = 24,
-    'keyword*' = 25,
-    'keyword' = 26,
-    'Num' = 27,
-    'Return' = 28,
-    'TryExcept' = 29,
-    'excepthandler*' = 30,
-    'ExceptHandler' = 31,
-    'Subscript' = 32,
-    'slice' = 33,
-    'Index' = 34,
-    'Tuple' = 35,
-    'Str' = 36,
-    'ClassDef' = 37,
-    'Dict' = 38,
-    'For' = 39,
-    'IfExp' = 40,
-    'UnaryOp' = 41,
-    'unaryop' = 42,
-    'BoolOp' = 43,
-    'boolop' = 44,
-    'With' = 45,
-    'TryFinally' = 46,
-    'ListComp' = 47,
-    'comprehension*' = 48,
-    'comprehension' = 49,
-    'Delete' = 50,
-    'AugAssign' = 51,
-    'Lambda' = 52,
-    'GeneratorExp' = 53,
-    'Assert' = 54,
-    'Yield' = 55,
-    'While' = 56,
-    'Slice' = 57,
-    'DictComp' = 58,
-    'Print' = 59,
-    'Exec' = 60,
-    'Global' = 61,
-    'str*' = 62
+    '<pad>' : 0,
+    'root' : 1,
+    'ImportFrom' : 2,
+    'alias*' : 3,
+    'alias' : 4,
+    'Import' : 5,
+    'Assign' : 6,
+    'expr*' : 7,
+    'expr' : 8,
+    'Name' : 9,
+    'List' : 10,
+    'If' : 11,
+    'Compare' : 12,
+    'cmpop*' : 13,
+    'cmpop' : 14,
+    'Attribute' : 15,
+    'stmt*' : 16,
+    'stmt' : 17,
+    'Raise' : 18,
+    'Call' : 19,
+    'BinOp' : 20,
+    'operator' : 21,
+    'FunctionDef' : 22,
+    'arguments' : 23,
+    'Expr' : 24,
+    'keyword*' : 25,
+    'keyword' : 26,
+    'Num' : 27,
+    'Return' : 28,
+    'TryExcept' : 29,
+    'excepthandler*' : 30,
+    'ExceptHandler' : 31,
+    'Subscript' : 32,
+    'slice' : 33,
+    'Index' : 34,
+    'Tuple' : 35,
+    'Str' : 36,
+    'ClassDef' : 37,
+    'Dict' : 38,
+    'For' : 39,
+    'IfExp' : 40,
+    'UnaryOp' : 41,
+    'unaryop' : 42,
+    'BoolOp' : 43,
+    'boolop' : 44,
+    'With' : 45,
+    'TryFinally' : 46,
+    'ListComp' : 47,
+    'comprehension*' : 48,
+    'comprehension' : 49,
+    'Delete' : 50,
+    'AugAssign' : 51,
+    'Lambda' : 52,
+    'GeneratorExp' : 53,
+    'Assert' : 54,
+    'Yield' : 55,
+    'While' : 56,
+    'Slice' : 57,
+    'DictComp' : 58,
+    'Print' : 59,
+    'Exec' : 60,
+    'Global' : 61,
+    'str*' : 62,
+    'Set': 63,
+    'SetComp': 64,
+    'ExtSlice': 65,
+    'Repr': 66
 }
 
 RULE_MAP = pickle.load(open('rule.pickle', 'rb'))
@@ -100,13 +104,15 @@ def pad_sents(sents, pad_id=0):
     return sents_padded
 
 def src_to_tensor(src_sents, src_vocab, device):
-    word_ids = src_vocab.words2indices(sents)
+    word_ids = src_vocab.words2indices(src_sents)
     sents_padded = pad_sents(word_ids, src_vocab['<pad>'])
     sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
     return sents_tensor
 
 def tgt_to_tensors(tgt_sents, tgt_vocab, device):
     gen_tok_ids = [[tgt_vocab[tok] if 'GenToken' in tok else tgt_vocab['<pad>'] for tok in sent] for sent in tgt_sents]
+    for sent in tgt_sents:
+        if 'Set' in sent: print sent
     node_ids = [[tgt_vocab['<pad>'] if 'GenToken' in tok else NODE_MAP[tok[: tok.find('->') - 1]] for tok in sent] for sent in tgt_sents]
     gen_toks_padded = pad_sents(gen_tok_ids, tgt_vocab['<pad>'])
     nodes_padded = pad_sents(node_ids, NODE_MAP['<pad>'])
@@ -116,7 +122,7 @@ def tgt_to_rules(tgt_sents, pad_id=0):
     """
     map tgt_rule -> id and token -> pad_id
     """
-    rules = [[RULE_MAP[rule] for rule in sent if 'GenToken' not in rule] for sent in tgt_sents]
+    rules = [[RULE_MAP[rule] if 'GenToken' not in rule else pad_id for rule in sent] for sent in tgt_sents]
     rules_padded = pad_sents(rules, pad_id)
     return torch.tensor(rules_padded, dtype=torch.long)
 

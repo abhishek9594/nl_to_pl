@@ -13,7 +13,7 @@ Options:
     --dev-src=<file>                dev source file
     --dev-tgt=<file>                dev target file
     --vocab=<file>                  vocab file
-    --batch-size=<int>              batch size [default: 16]
+    --batch-size=<int>              batch size [default: 8]
     --embed-size=<int>              embedding size [default: 512]
     --hidden-size=<int>             hidden size [default: 2048]
     --max-epoch=<int>               max epoch [default: 20]
@@ -33,7 +33,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from vocab import Vocab
-from nn.utils import read_corpus, batch_iter, save_sents, compute_bleu_score, compute_exact_match
+from parse import parse
+from utils import read_corpus, batch_iter, save_sents, compute_bleu_score
 from nn.trans_copy import TransCopy
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -54,7 +55,7 @@ def validate(model, dev_data, batch_size=32):
 
     with torch.no_grad():
         for src_sents, tgt_sents in batch_iter(dev_data, batch_size):
-            num_words_to_predict = sum(len(tgt_sent[1:]) for tgt_sent in tgt_sents)
+            num_words_to_predict = sum(len(tgt_sent) for tgt_sent in tgt_sents)
             loss = -model(src_sents, tgt_sents).sum()
             
             cum_loss += loss
@@ -94,14 +95,15 @@ def train(args):
     train our neural model
     @param args (dict): command line args
     """
-    train_data_src = read_corpus(args['--train-src'], domain='src')
-    train_data_tgt = read_corpus(args['--train-tgt'], domain='tgt')
+    (train_src, train_tgt), _ = read_corpus(args['--train-src'], args['--train-tgt'])
 
-    dev_data_src = read_corpus(args['--dev-src'], domain='src')
-    dev_data_tgt = read_corpus(args['--dev-tgt'], domain='tgt')
+    (dev_src, dev_tgt), _ = read_corpus(args['--dev-src'], args['--dev-tgt'])
     
-    train_data = list(zip(train_data_src, train_data_tgt))
-    dev_data = list(zip(dev_data_src, dev_data_tgt))
+    train_rules = [parse(code).to_rule() for code in train_tgt]
+    dev_rules = [parse(code).to_rule() for code in dev_tgt]
+
+    train_data = list(zip(train_src, train_rules))
+    dev_data = list(zip(dev_src, dev_rules))
 
     train_batch_size = dev_batch_size = int(args['--batch-size'])
     model_save_path = args['--save-model-to']
@@ -125,7 +127,7 @@ def train(args):
     begin_time = time.time()
     for epoch in range(int(args['--max-epoch'])):
         for src_sents, tgt_sents in batch_iter(train_data, batch_size=train_batch_size, shuffle=True):
-            num_words_to_predict = sum(len(tgt_sent[1:]) for tgt_sent in tgt_sents)
+            num_words_to_predict = sum(len(tgt_sent) for tgt_sent in tgt_sents)
             optimizer.zero_grad()
 
             batch_loss = -model(src_sents, tgt_sents).sum()

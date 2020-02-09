@@ -10,7 +10,7 @@ from trans_decoder import TransDecoder
 from model_embeddings import ModelEmbeddings
 from positional_embeddings import PositionalEmbeddings
 from utils import NODE_MAP, RULE_MAP
-from utils import src_to_tensor, tgt_to_tensors, 
+from utils import src_to_tensor, tgt_to_tensors
 from utils import subsequent_mask, clone
 
 class TransVanilla(nn.Module):

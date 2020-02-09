@@ -2,6 +2,7 @@
 from __future__ import division
 
 import math
+import numpy as np
 import nltk
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 import re

@@ -32,7 +32,7 @@ class TransCopy(TransVanilla):
         src_mask = (src_tensor != padx).unsqueeze(1)
         src_encoded = self.encode(src_tensor, src_mask)
 
-        gen_toks_tensor, nodes_tensor = tgt_to_tensors(tgt, self.vocab.tgt, device)
+        gen_toks_tensor, nodes_tensor = tgt_to_tensors(tgt, self.vocab.tgt, device=self.device)
         tgt_mask = ((gen_toks_tensor != padx) | (nodes_tensor != padx)).unsqueeze(1)
         subseq_mask = subsequent_mask(tgt_mask.shape[-1]).type_as(tgt_mask.data).to(self.device)
         tgt_mask = tgt_mask & subseq_mask
