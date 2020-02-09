@@ -5,7 +5,6 @@ model for tuning tokens' embeddings
 """
 
 import torch.nn as nn
-from utils import NODE_MAP
 
 class ModelEmbeddings(nn.Module):
 

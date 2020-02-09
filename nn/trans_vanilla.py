@@ -9,6 +9,8 @@ from trans_encoder import TransEncoder
 from trans_decoder import TransDecoder
 from model_embeddings import ModelEmbeddings
 from positional_embeddings import PositionalEmbeddings
+from utils import NODE_MAP
+from utils import src_tensor, tgt_tensor, 
 from utils import subsequent_mask, clone
 
 class TransVanilla(nn.Module):
@@ -19,7 +21,7 @@ class TransVanilla(nn.Module):
         self.d_ff = hidden_size
         self.dropout_rate = dropout_rate
         self.vocab = vocab
-        self.embeddings = ModelEmbeddings(self.d_model, self.vocab)
+        self.embeddings = ModelEmbeddings(self.d_model, self.vocab, NODE_MAP)
         self.pe = PositionalEmbeddings(self.d_model, self.dropout_rate)
         
         self.encoder_blocks = clone(TransEncoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
@@ -31,7 +33,8 @@ class TransVanilla(nn.Module):
         src: (list[list[str]])
         tgt: (list[list[str]])
         """
-        src_padded = self.vocab.src.sents2Tensor(src).to(self.device)
+        """
+        src_padded = src_tensor(src).to(self.device)
         src_mask = (src_padded != padx).unsqueeze(1)
         src_encoded = self.encode(src_padded, src_mask)
 
@@ -49,6 +52,8 @@ class TransVanilla(nn.Module):
             index=tgt_padded[:, 1:].unsqueeze(-1)).squeeze(-1) * tgt_padded_mask[:, 1:]
         scores = tgt_predicted.sum(dim=0)
         return scores
+        """
+        pass
         
     def encode(self, src, src_mask=None):
         x = self.pe(self.embeddings.src_embedding(src))
@@ -57,10 +62,13 @@ class TransVanilla(nn.Module):
         return x
 
     def decode(self, src_encoded, tgt, src_mask=None, tgt_mask=None):
+        """
         x = self.pe(self.embeddings.tgt_embedding(tgt))
         for decoder in self.decoder_blocks:
             x, _, _ = decoder(src_encoded, x, src_mask, tgt_mask)
         return self.vocab_project(x)
+        """
+        pass
 
     def beam_search(self, src_sent, beam_size, max_decoding_time_step):
         """
@@ -69,6 +77,7 @@ class TransVanilla(nn.Module):
         @param beam_size (int)
         @param max_decoding_time_step (int): decode the hyp until <eos> or max decoding time step
         @return best_hyp (list[str]): best possible hyp
+        """
         """
         src_padded = self.vocab.src.sents2Tensor([src_sent]).to(self.device)
         src_encoded = self.encode(src_padded, src_mask=None)
@@ -126,6 +135,8 @@ class TransVanilla(nn.Module):
         completed_hyps.sort(key=lambda (hyp, score): score, reverse=True)
         best_hyp = [str(word) for word in completed_hyps[0][0]]
         return best_hyp
+        """
+        pass
 
     @property
     def device(self):

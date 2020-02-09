@@ -3,6 +3,7 @@ from __future__ import division
 
 import math
 import numpy as np
+import pickle
 import copy
 import torch
 import torch.nn as nn
@@ -73,6 +74,8 @@ NODE_MAP = {
     'str*' = 62
 }
 
+RULE_MAP = pickle.load(open('rule.pickle', 'rb'))
+
 def wrapGenTok(word):
     #wrap word inside `GenToken[]`
     return 'GenToken[' + word + ']'
@@ -96,18 +99,18 @@ def pad_sents(sents, pad_id=0):
 
     return sents_padded
 
-def src_sents_tensor(src_sents, src_vocab):
+def src_tensor(src_sents, src_vocab, device):
     word_ids = src_vocab.words2indices(sents)
     sents_padded = pad_sents(word_ids, src_vocab['<pad>'])
-    sents_tensor = torch.tensor(sents_padded, dtype=torch.long)
+    sents_tensor = torch.tensor(sents_padded, dtype=torch.long, device=device)
     return sents_tensor
 
-def tgt_sents_tensor(tgt_sents, tgt_vocab):
+def tgt_tensors(tgt_sents, tgt_vocab, device):
     gen_tok_ids = [[tgt_vocab[tok] if 'GenToken' in tok else tgt_vocab['<pad>'] for tok in sent] for sent in tgt_sents]
     node_ids = [[tgt_vocab['<pad>'] if 'GenToken' in tok else NODE_MAP[tok[: tok.find('->') - 1]] for tok in sent] for sent in tgt_sents]
     gen_toks_padded = pad_sents(gen_tok_ids, tgt_vocab['<pad>'])
     nodes_padded = pad_sents(node_ids, NODE_MAP['<pad>'])
-    return torch.tensor(gen_toks_padded, dtype=torch.long), torch.tensor(nodes_padded, dtype=torch.long)
+    return torch.tensor(gen_toks_padded, dtype=torch.long, device=device), torch.tensor(nodes_padded, dtype=torch.long, device=device)
 
 def map_src_tgt(src, tgt, vocab, device):
     """
