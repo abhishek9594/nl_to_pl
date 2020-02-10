@@ -136,7 +136,7 @@ class ASTNode(object):
 
         raise KeyError
 
-    def to_rule(self, include_value=False):
+    def to_rule(self):
         """
         transform the current AST node to a production rule
         """
@@ -146,10 +146,11 @@ class ASTNode(object):
             curr_node = nodes.pop()
             
             if curr_node.value is not None:
+                #only builtin types have value
                 rules.append('GenToken[' + str(curr_node.value) + ']')
-            #else do nothing
 
             if curr_node.is_leaf:
+                #either a builtin type (see above) or terminal type
                 rules.append('GenToken[<eob>]')
             else:
                 curr_node_type = typename(curr_node.type)
