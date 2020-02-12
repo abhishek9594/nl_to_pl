@@ -160,8 +160,9 @@ class Vocab(object):
         where we account src_toks copied to tgt_sents
         @param src_sents (list[list[str]]): list of source sentences
         @param tgt_sents (list[list[str]]): list of target sentences
-        @return out_tensor (torch.tensor (max_tgt_sent_len, batch_size))
+        @return tgt_gen_toks_tensor (torch.tensor (max_tgt_sent_len, batch_size))
         """
+        tgt_gen_toks = []
         for src_sent, tgt_sent in zip(src_sents, tgt_sents):
             unk_word_idx = self.map_unk_src(src_sent)
             tgt_gen_toks.append([self.tgt['<pad>'] if 'GenToken' not in tok else self.tgt[tok] if tok not in unk_word_idx else len(self.tgt) + unk_word_idx[tok] for tok in tgt_sent])
