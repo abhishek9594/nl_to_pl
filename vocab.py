@@ -16,8 +16,9 @@ from collections import Counter
 from docopt import docopt
 from itertools import chain
 import pickle
+import torch
 
-from utils import read_corpus
+from utils import read_corpus, pad_sents, wrapGenTok
 from parse import parse
 
 
@@ -32,6 +33,7 @@ class VocabEntry(object):
             self.word2id = dict()
             self.word2id['<pad>'] = 0       #Pad Token
             self.word2id['<unk>'] = 1       #Unknown Token
+        self.pad_id = self.word2id['<pad>']
         self.unk_id = self.word2id['<unk>']
         self.id2word = {v: k for k, v in self.word2id.items()}
 
@@ -104,6 +106,16 @@ class VocabEntry(object):
         """
         return [self.id2word[w_id] for w_id in word_ids]
 
+    def sents2Tensor(self, sents):
+        """
+        Convert list of sent to tensor by padding required sents
+        @param sents (list[list[str]]): batch of sents in reverse sorted order
+        @return out_tensor (torch.tensor (max_sent_len, batch_size))
+        """
+        word_ids = self.words2indices(sents)
+        sents_padded = pad_sents(word_ids, self['<pad>'])
+        return torch.tensor(sents_padded, dtype=torch.long) #(b, Q)
+
     @staticmethod
     def from_corpus(corpus, freq_cutoff):
         """ Given a corpus construct a Vocab Entry.
@@ -120,7 +132,8 @@ class VocabEntry(object):
         return vocab_entry
 
 class Vocab(object):
-    """ Vocab encapsulating src and target langauges.
+    """ 
+    Vocab encapsulating src and target langauges.
     """
     def __init__(self, src_vocab, tgt_vocab):
         """
@@ -130,11 +143,78 @@ class Vocab(object):
         self.src = src_vocab
         self.tgt = tgt_vocab
 
+    def tgt_sents2Tensor(self, tgt_sents):
+        """
+        Convert list of tgt_sents to tensor by padding required sents
+        where a tgt_sent could contain nodes + GenTokens or rules + GenTokens
+        @param sents (list[list[str]]): batch of tgt_sents
+        @return out_tensor (torch.tensor (max_sent_len, batch_size))
+        """
+        #filter any non-GenToken
+        tgt_tokens = [[tok for tok in sent if 'GenToken' in tok] for sent in tgt_sents]
+        return self.vocab.tgt.sents2Tensor(tgt_tokens)
+    
+    def tgt_out_tensor(self, src_sents, tgt_sents):
+        """
+        get tgt_out tensor representation for tgt_sents
+        where we account src_toks copied to tgt_sents
+        @param src_sents (list[list[str]]): list of source sentences
+        @param tgt_sents (list[list[str]]): list of target sentences
+        @return out_tensor (torch.tensor (max_tgt_sent_len, batch_size))
+        """
+        for src_sent, tgt_sent in zip(src_sents, tgt_sents):
+            unk_word_idx = self.map_unk_src(src_sent)
+            tgt_gen_toks.append([self.vocab.tgt['<pad>'] if 'GenToken' not in tok else self.vocab.tgt[tok] if tok not in unk_word_idx else len(self.vocab.tgt) + unk_word_idx[tok] for tok in tgt_sent])
+        tgt_gen_toks_padded = pad_sents(tgt_gen_toks, self.vocab.tgt['<pad>'])
+        return torch.tensor(tgt_gen_toks_padded, dtype=torch.long) #(b, Q)
+
+    def src_idx_tgt(self, src_sents, tgt_sents):
+        """
+        compute src_tok idx in tgt_sent
+        idx will be used while copying src_tok to tgt_sent
+        @param src_sents (list[list[str]]): list of source sentences
+        @param tgt_sents (list[list[str]]): list of target sentences
+        @return src_idx_tensor (torch.tensor (max_src_sent_len, batch_size))
+        """
+        src_idx_tgt_sents = []
+        for src_sent, tgt_sent in zip(src_sents, tgt_sents):
+            unk_word_idx = self.map_unk_src(src_sent)
+            src_idx_tgt_sents.append([self.vocab.tgt[wrapGenTok(tok)] if wrapGenTok(tok) not in unk_word_idx else len(self.vocab.tgt) + unk_word_idx[wrapGenTok(tok)] for tok in src_sent])
+        src_idx_tgt_padded = pad_sents(src_idx_tgt_sents, self.vocab.src['<pad>'])
+        max_tgt_len = max(len(tgt_sent) for tgt_sent in tgt_sents)
+        #expand to adjust for Q length tgt_sent in (b,Q,K), as any word in a query (Q[i]) can come from src_sent
+        src_idx_tgt_expanded = [[src_idx_tgt_padded[i]] * max_tgt_len for i in range(len(src_idx_tgt_padded))]
+        return torch.tensor(src_idx_tgt_expanded, dtype=torch.long) #(b,Q,K)
+
+    def max_unk_toks(self, src_sents):
+        """
+        compute max unk_toks for vocab.tgt occuring in src_sents
+        @param src_sents (list[list[str]]): list of source sentences
+        @return max_src_unk_toks (int): max src_unk toks for vocab.tgt
+        """
+        return max([len(self.map_unk_src(src_sent)) for src_sent in src_sents])
+
+    def map_unk_src(self, src_sent):
+        """
+        map: src_tok -> id, such that self.vocab.tgt(src_tok) = unk_id
+        map all the sorce tokens which are <unk> in target vocab to ids
+        @param src_sent (list[str]): src sent containing list of tokens
+        @return unk_word_idx (dict(unk_word : id)): dictionary mapping the unk src tokens to id
+        """
+        unk_word_idx = dict()
+        unk_word_pos = 0
+        for word in src_sent:
+            word = wrapGenTok(word)
+            if word not in self.vocab.tgt and word not in unk_word_idx:
+                unk_word_idx[word] = unk_word_pos
+                unk_word_pos += 1
+        return unk_word_idx
+
     @staticmethod
     def build(src_sents, tgt_sents, freq_cutoff):
         """
-        @param src_sents (list[str]): Source sentences provided by read_corpus() function
-        @param tgt_sents (list[str]): Target sentences provided by read_corpus() function
+        @param src_sents (list[list[str]]): Source sentences provided by read_corpus() function
+        @param tgt_sents (list[list[str]]): Target sentences provided by read_corpus() function
         @param freq_cutoff (int): if word occurs n < freq_cutoff times, drop the word.
         """
         assert len(src_sents) == len(tgt_sents)

@@ -9,6 +9,10 @@ import re
 
 QUOTED_STRING_RE = re.compile(r"(?P<quote>['\"])(?P<string>.*?)(?<!\\)(?P=quote)")
 
+def wrapGenTok(tok):
+    #wrap tok inside `GenToken[]`
+    return 'GenToken[' + tok + ']'
+
 def read_corpus(src_file, tgt_file):
     """
     extract input tokens using NLTK, whereas parse output tokens according to its syntax
@@ -26,7 +30,7 @@ def read_corpus(src_file, tgt_file):
         for quote, raw_str in matches:
             if raw_str in str_set:
                 continue
-            str_repr = '_STR%d_' % str_count
+            str_repr = '_STR:%d_' % str_count
             str_literal = quote + raw_str + quote
             str_map[str_repr] = str_literal
             str_set.add(raw_str)
@@ -39,7 +43,6 @@ def read_corpus(src_file, tgt_file):
         if len(str_map) > 0: sent_str_map[sent_num] = str_map
 
     for sent_num, tgt_sent in enumerate(open(tgt_file, 'r')):
-        tgt_sent = tgt_sent.rstrip()
         if sent_num in sent_str_map:
             for str_repr, str_literal in sent_str_map[sent_num].items():
                 tgt_sent = tgt_sent.replace(str_literal, str_repr)
@@ -47,6 +50,25 @@ def read_corpus(src_file, tgt_file):
         
     data = zip(src_data, tgt_data)
     return (src_data, tgt_data), sent_str_map
+
+def pad_sents(sents, pad_id=0):
+    """
+    pad the list of sents according to max sent len
+    @param sents (list[list[int]]): list of word ids of sentences
+    @param pad_id (int): pad idx
+    @return sents_padded (list[list[int]]): padded sentences
+    """
+    sents_padded = []
+    max_len = 0
+
+    for sent in sents:
+        if len(sent) > max_len: max_len = len(sent)
+    for sent in sents:
+        sent_padded = sent
+        sent_padded.extend([pad_id for i in range(max_len - len(sent))])
+        sents_padded.append(sent_padded)
+
+    return sents_padded
 
 def save_sents(sents, file_path):
     """

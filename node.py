@@ -14,8 +14,9 @@ from collections import Counter
 from docopt import docopt
 from itertools import chain
 import pickle
+import torch
 
-from utils import read_corpus
+from utils import read_corpus, pad_sents
 from parse import parse
 from lang.py.grammar import PY_AST_NODE_FIELDS
 
@@ -29,6 +30,7 @@ class Node(object):
         else:
             self.node2id = dict()
             self.node2id['<pad>'] = 0       #Pad Token
+        self.pad_id = self.node2id['<pad>']
         self.id2node = {v: k for k, v in self.node2id.items()}
 
     def __getitem__(self, node):
@@ -82,16 +84,16 @@ class Node(object):
             return self[node]
 
     def nodes2indices(self, sents):
-        """ Convert list of nodes or list of sentences of nodes
+        """ Convert list of tokens or list of sentences of tokens
         into list or list of list of indices.
-        @param sents (list[str] or list[list[str]]): sentence(s) in nodes
+        @param sents (list[str] or list[list[str]]): sentence(s) containing either node or GenToken toks
         @return node_ids (list[int] or list[list[int]]): sentence(s) in indices
         """
         if type(sents[0]) == list:
-            return [[self[node] for node in sent] for sent in sents]
+            return [[self[node] if 'GenToken' not in node else self.pad_id for node in sent] for sent in sents]
         else:
             sent = sents
-            return [self[node] for node in sent]
+            return [self[node] if 'GenToken' not in node else self.pad_id for node in sent]
 
     def indices2nodes(self, node_ids):
         """ Convert list of indices into nodes.
@@ -99,6 +101,17 @@ class Node(object):
         @return sents (list[str]): list of nodes
         """
         return [self.id2node[n_id] for n_id in node_ids]
+
+    def sents2tensor(self, sents):
+        """
+        Convert list of tgt sents to node tensor by padding required sents
+        where tgt sents can contain node and GenToken toks
+        @param sents (list[list[str]]): batch of tgt sents
+        @return node_tensor (torch.tensor (max_sent_len, batch_size))
+        """
+        node_ids = self.nodes2indices(sents)
+        nodes_padded = pad_sents(node_ids, self.pad_id)
+        return torch.tensor(nodes_padded, dtype=torch.long)
 
     @staticmethod
     def build(corpus):

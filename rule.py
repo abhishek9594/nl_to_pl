@@ -14,8 +14,9 @@ from collections import Counter
 from docopt import docopt
 from itertools import chain
 import pickle
+import torch
 
-from utils import read_corpus
+from utils import read_corpus, pad_sents
 from parse import parse
 
 class Rule(object):
@@ -28,6 +29,7 @@ class Rule(object):
         else:
             self.rule2id = dict()
             self.rule2id['<pad>'] = 0       #Pad Token
+        self.pad_id = self.rule2id['<pad>']
         self.id2rule = {v: k for k, v in self.rule2id.items()}
 
     def __getitem__(self, rule):
@@ -81,16 +83,16 @@ class Rule(object):
             return self[rule]
 
     def rules2indices(self, sents):
-        """ Convert list of rules or list of sentences of rules
+        """ Convert list of tokens or list of sentences of tokens
         into list or list of list of indices.
-        @param sents (list[str] or list[list[str]]): sentence(s) in rules
+        @param sents (list[str] or list[list[str]]): sentence(s) containing either rule or GenToken toks
         @return rule_ids (list[int] or list[list[int]]): sentence(s) in indices
         """
         if type(sents[0]) == list:
-            return [[self[rule] for rule in sent] for sent in sents]
+            return [[self[rule] if 'GenToken' not in rule else self.pad_id for rule in sent] for sent in sents]
         else:
             sent = sents
-            return [self[rule] for rule in sent]
+            return [self[rule] if 'GenToken' not in rule else self.pad_id for rule in sent]
 
     def indices2rules(self, rule_ids):
         """ Convert list of indices into rules.
@@ -98,6 +100,17 @@ class Rule(object):
         @return sents (list[str]): list of rules
         """
         return [self.id2rule[n_id] for n_id in rule_ids]
+
+    def sents2tensor(self, sents):
+        """
+        Convert list of tgt sents to rule tensor by padding required sents
+        where tgt sents can contain rule and GenToken toks
+        @param sents (list[list[str]]): batch of tgt sents
+        @return rule_tensor (torch.tensor (max_sent_len, batch_size))
+        """
+        rule_ids = self.rules2indices(sents)
+        rules_padded = pad_sents(rule_ids, self.pad_id)
+        return torch.tensor(rules_padded, dtype=torch.long)
 
     @staticmethod
     def build(corpus):
