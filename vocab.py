@@ -176,7 +176,7 @@ if __name__ == '__main__':
     print('read in target sentences: %s' % args['--train-tgt'])
 
     (src_sents, tgt_sents), _ = read_corpus(args['--train-src'], args['--train-tgt'])
-    tgt_rules = [parse(code).to_rule() for code in tgt_sents]
+    tgt_rules = [parse(code).to_rules() for code in tgt_sents]
     tgt_tokens = [[token for token in rules if 'GenToken' in token] for rules in tgt_rules]
 
 
