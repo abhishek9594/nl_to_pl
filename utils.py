@@ -30,7 +30,7 @@ def read_corpus(src_file, tgt_file):
         for quote, raw_str in matches:
             if raw_str in str_set:
                 continue
-            str_repr = '_STR:%d_' % str_count
+            str_repr = '_STR%d_' % str_count
             str_literal = quote + raw_str + quote
             str_map[str_repr] = str_literal
             str_set.add(raw_str)
@@ -48,7 +48,6 @@ def read_corpus(src_file, tgt_file):
                 tgt_sent = tgt_sent.replace(str_literal, str_repr)
         tgt_data.append(tgt_sent.rstrip())
         
-    data = zip(src_data, tgt_data)
     return (src_data, tgt_data), sent_str_map
 
 def pad_sents(sents, pad_id=0):
