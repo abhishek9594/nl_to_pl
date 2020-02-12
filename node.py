@@ -102,7 +102,7 @@ class Node(object):
         """
         return [self.id2node[n_id] for n_id in node_ids]
 
-    def sents2tensor(self, sents):
+    def sents2Tensor(self, sents):
         """
         Convert list of tgt sents to node tensor by padding required sents
         where tgt sents can contain node and GenToken toks
