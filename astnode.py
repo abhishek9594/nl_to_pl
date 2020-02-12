@@ -136,9 +136,9 @@ class ASTNode(object):
 
         raise KeyError
 
-    def to_rule(self):
+    def to_rules(self):
         """
-        transform the current AST node to the list of rules
+        transform the current AST node to list of rules
         """
         nodes = [self]
         rules = []
@@ -160,28 +160,28 @@ class ASTNode(object):
                 nodes.extend(curr_node.children[::-1])
         return rules
 
-    def to_nodes(self):
+    def to_tokens(self):
         """
-        transform the current AST node to the list of nodes
+        transform the current AST node to list of tokens
         """
         nodes = [self]
-        nodes_list = []
+        tokens = []
         while len(nodes):
             curr_node = nodes.pop()
 
             if curr_node.is_leaf:
                 #either a terminal type or builtin type
                 if curr_node.value is None:
-                    nodes_list.append(typename(curr_node.type))
+                    tokens.append(typename(curr_node.type))
                 else:
-                    nodes_list.extend([typename(curr_node.type), 'GenToken[' + str(curr_node.value) + ']'])
+                    tokens.extend([typename(curr_node.type), 'GenToken[' + str(curr_node.value) + ']'])
             else:
                 curr_node_type = typename(curr_node.type)
                 curr_node_child = [typename(child.type) + ('' if child.label is None  else '[' + child.label + ']')  for child in curr_node.children]
-                nodes_list.append(curr_node_type)
+                tokens.append(curr_node_type)
 
                 nodes.extend(curr_node.children[::-1])
-        return nodes_list
+        return tokens
 
     def copy(self):
         new_tree = ASTNode(self.type, self.label, self.value)

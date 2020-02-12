@@ -258,7 +258,7 @@ class Demonwrath(SpellCard):
     code = """raise ImproperlyConfigured ( "You must define a '%s' cache" % DEFAULT_CACHE_ALIAS )"""
     parse_tree = parse(code)
 
-    rules =  parse_tree.to_rule()
+    rules =  parse_tree.to_rules()
 
     root_node = ASTNode('root')
     root_node, _ = decode_rule_to_tree(rules, root_node)
