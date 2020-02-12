@@ -107,7 +107,7 @@ class VocabEntry(object):
     @staticmethod
     def from_corpus(corpus, freq_cutoff):
         """ Given a corpus construct a Vocab Entry.
-        @param corpus (list[str]): corpus of text produced by read_corpus function
+        @param corpus (list[list[str]]): corpus of text produced by read_corpus function
         @param freq_cutoff (int): if word occurs n < freq_cutoff times, drop the word
         @returns vocab_entry (VocabEntry): VocabEntry instance produced from provided corpus
         """
