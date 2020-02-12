@@ -46,7 +46,7 @@ def read_corpus(src_file, tgt_file):
         if sent_num in sent_str_map:
             for str_repr, str_literal in sent_str_map[sent_num].items():
                 tgt_sent = tgt_sent.replace(str_literal, str_repr)
-        tgt_data.append(tgt_sent)
+        tgt_data.append(tgt_sent.rstrip())
         
     data = zip(src_data, tgt_data)
     return (src_data, tgt_data), sent_str_map
