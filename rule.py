@@ -101,7 +101,7 @@ class Rule(object):
         """
         return [self.id2rule[n_id] for n_id in rule_ids]
 
-    def sents2tensor(self, sents):
+    def sents2Tensor(self, sents):
         """
         Convert list of tgt sents to rule tensor by padding required sents
         where tgt sents can contain rule and GenToken toks
