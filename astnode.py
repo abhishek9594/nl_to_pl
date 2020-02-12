@@ -138,7 +138,7 @@ class ASTNode(object):
 
     def to_rule(self):
         """
-        transform the current AST node to a production rule
+        transform the current AST node to the list of rules
         """
         nodes = [self]
         rules = []
@@ -159,6 +159,29 @@ class ASTNode(object):
 
                 nodes.extend(curr_node.children[::-1])
         return rules
+
+    def to_nodes(self):
+        """
+        transform the current AST node to the list of nodes
+        """
+        nodes = [self]
+        nodes_list = []
+        while len(nodes):
+            curr_node = nodes.pop()
+
+            if curr_node.is_leaf:
+                #either a terminal type or builtin type
+                if curr_node.value is None:
+                    nodes_list.append(typename(curr_node.type))
+                else:
+                    nodes_list.extend([typename(curr_node.type), 'GenToken[' + str(curr_node.value) + ']'])
+            else:
+                curr_node_type = typename(curr_node.type)
+                curr_node_child = [typename(child.type) + ('' if child.label is None  else '[' + child.label + ']')  for child in curr_node.children]
+                nodes_list.append(curr_node_type)
+
+                nodes.extend(curr_node.children[::-1])
+        return nodes_list
 
     def copy(self):
         new_tree = ASTNode(self.type, self.label, self.value)
