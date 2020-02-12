@@ -3,7 +3,7 @@
 run script to train and test our neural model
 
 Usage:
-    run_transformer.py train --train-src=<file> --train-tgt=<file> --dev-src=<file> --dev-tgt=<file> --vocab=<file> [options]
+    run_transformer.py train --train-src=<file> --train-tgt=<file> --dev-src=<file> --dev-tgt=<file> --vocab=<file> --nodes=<file> --rules=<file> [options]
     run_transformer.py test MODEL_PATH TEST_SOURCE_FILE TEST_TARGET_FILE OUTPUT_FILE [options]
 
 Options:
@@ -13,6 +13,8 @@ Options:
     --dev-src=<file>                dev source file
     --dev-tgt=<file>                dev target file
     --vocab=<file>                  vocab file
+    --nodes=<file>                   node file
+    --rules=<file>                   rule file
     --batch-size=<int>              batch size [default: 8]
     --embed-size=<int>              embedding size [default: 512]
     --hidden-size=<int>             hidden size [default: 2048]
@@ -33,6 +35,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from vocab import Vocab
+from node import Node
+from rule import Rule
 from parse import parse
 from utils import read_corpus, batch_iter, save_sents, compute_bleu_score
 from nn.trans_copy import TransCopy
@@ -55,8 +59,10 @@ def validate(model, dev_data, batch_size=32):
 
     with torch.no_grad():
         for src_sents, tgt_sents in batch_iter(dev_data, batch_size):
-            num_words_to_predict = sum(len(tgt_sent) for tgt_sent in tgt_sents)
-            loss = -model(src_sents, tgt_sents).sum()
+            tgt_tokens = [parse(code).to_tokens() for code in tgt_sents]
+            tgt_rules = [parse(code).to_rules() for code in tgt_sents]
+            num_words_to_predict = sum(len(rules) for rules in tgt_rules)
+            loss = -model(src_sents, tgt_tokens, tgt_rules).sum()
             
             cum_loss += loss
             cum_tgt_words += num_words_to_predict
@@ -98,20 +104,21 @@ def train(args):
     (train_src, train_tgt), _ = read_corpus(args['--train-src'], args['--train-tgt'])
 
     (dev_src, dev_tgt), _ = read_corpus(args['--dev-src'], args['--dev-tgt'])
-    
-    train_rules = [parse(code).to_rule() for code in train_tgt]
-    dev_rules = [parse(code).to_rule() for code in dev_tgt]
 
-    train_data = list(zip(train_src, train_rules))
-    dev_data = list(zip(dev_src, dev_rules))
+    train_data = list(zip(train_src, train_tgt))
+    dev_data = list(zip(dev_src, dev_tgt))
 
     train_batch_size = dev_batch_size = int(args['--batch-size'])
     model_save_path = args['--save-model-to']
     vocab = Vocab.load(args['--vocab'])
+    nodes = Node.load(args['--nodes'])
+    rules = Rule.load(args['--rules'])
 
     model = TransCopy(embed_size=int(args['--embed-size']),
                     hidden_size=int(args['--hidden-size']),
                     vocab=vocab,
+                    nodes=nodes,
+                    rules=rules,
                     dropout_rate=float(args['--dropout']))
     model.train()
     model = model.to(device)
@@ -127,10 +134,12 @@ def train(args):
     begin_time = time.time()
     for epoch in range(int(args['--max-epoch'])):
         for src_sents, tgt_sents in batch_iter(train_data, batch_size=train_batch_size, shuffle=True):
-            num_words_to_predict = sum(len(tgt_sent) for tgt_sent in tgt_sents)
+            tgt_tokens = [parse(code).to_tokens() for code in tgt_sents]
+            tgt_rules = [parse(code).to_rules() for code in tgt_sents]
+            num_words_to_predict = sum(len(rules) for rules in tgt_rules)
             optimizer.zero_grad()
 
-            batch_loss = -model(src_sents, tgt_sents).sum()
+            batch_loss = -model(src_sents, tgt_tokens, tgt_rules).sum()
             loss = batch_loss / num_words_to_predict
             loss.backward()
             optimizer.step()

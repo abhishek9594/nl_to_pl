@@ -9,30 +9,30 @@ from trans_encoder import TransEncoder
 from trans_decoder import TransDecoder
 from model_embeddings import ModelEmbeddings
 from positional_embeddings import PositionalEmbeddings
-from utils import src_to_tensor, tgt_to_tensors, map_src_tgt_tokens, tgt_to_rules
 from utils import subsequent_mask
 
 from trans_vanilla import TransVanilla
 
 class TransCopy(TransVanilla):
 
-    def __init__(self, embed_size, hidden_size, vocab, dropout_rate):
-        super(TransCopy, self).__init__(embed_size, hidden_size, vocab, dropout_rate)
+    def __init__(self, embed_size, hidden_size, vocab, nodes, rules, dropout_rate):
+        super(TransCopy, self).__init__(embed_size, hidden_size, vocab, nodes, rules, dropout_rate)
 
         self.context_proj = nn.Linear(self.d_model, 1)
         self.dec_in_proj = nn.Linear(self.d_model, 1)
         self.dec_out_proj = nn.Linear(self.d_model, 1)
 
-    def forward(self, src, tgt, padx=0):
+    def forward(self, src_sents, tgt_tokens, tgt_rules, padx=0):
         """
-        src: (list[list[str]])
-        tgt: (list[list[str]])
+        src_sents: (list[list[str]])
+        tgt_tokens: (list[list[str]]) tgt_sents tokens containing nodes + GenTokens
+        tgt_rules: (list[list[str]]) tgt_sents rules containing rules + GenTokens
         """
-        src_tensor = src_to_tensor(src, self.vocab.src, device=self.device)
+        src_tensor = self.vocab.src.sents2Tensor(src_sents).to(self.device)
         src_mask = (src_tensor != padx).unsqueeze(1)
         src_encoded = self.encode(src_tensor, src_mask)
 
-        gen_toks_tensor, nodes_tensor = tgt_to_tensors(tgt, self.vocab.tgt, device=self.device)
+        gen_toks_tensor, nodes_tensor = self.vocab.tgt_sents2Tensor(tgt_tokens).to(self.device), self.nodes.sents2Tensor(tgt_tokens).to(self.device)
         tgt_mask = ((gen_toks_tensor != padx) | (nodes_tensor != padx)).unsqueeze(1)
         subseq_mask = subsequent_mask(tgt_mask.shape[-1]).type_as(tgt_mask.data).to(self.device)
         tgt_mask = tgt_mask & subseq_mask
@@ -44,26 +44,28 @@ class TransCopy(TransVanilla):
         rules_decoded = self.rule_project(tgt_encoded)
         log_P_rules = F.log_softmax(rules_decoded, dim=-1)
 
-        tgt_gen_toks, src_ids_map_tgt, max_unk_src_words = map_src_tgt_tokens(src, tgt, self.vocab, self.device)
+        src_idx_tgt = self.vocab.src_idx_in_tgt(src_sents, tgt_rules).to(self.device)
+        max_unk_src_toks = self.vocab.max_unk_toks(src_sents)
         A_QK = torch.sum(torch.stack(q_key_src_dots, dim=0), dim=0) / 8 #normalize by num heads
         P_gen = self.p_gen(Y_e=src_encoded, A_QK=A_QK, gen_toks=gen_toks_tensor, nodes=nodes_tensor, Y_d=tgt_encoded)
-        P_gen_copy = torch.cat((torch.mul(P_gen.unsqueeze(-1) , P_gen_tok), torch.zeros(P_gen_tok.shape[0], P_gen_tok.shape[1], max_unk_src_words, device=self.device)), dim=-1)
+        P_gen_copy = torch.cat((torch.mul(P_gen.unsqueeze(-1) , P_gen_tok), torch.zeros(P_gen_tok.shape[0], P_gen_tok.shape[1], max_unk_src_toks, device=self.device)), dim=-1)
         P_copy =  torch.mul((1 - P_gen).unsqueeze(-1), A_QK) #(b, Q, K)
-        P_gen_copy = P_gen_copy.scatter_add(dim=-1, index=src_ids_map_tgt, source=P_copy)
+        P_gen_copy = P_gen_copy.scatter_add(dim=-1, index=src_idx_tgt, source=P_copy)
                 
         copy_mask = (P_gen_copy != 0)
         P_gen_copy = P_gen_copy.masked_fill(copy_mask == 0, 1.0)
         log_P_gen_copy = torch.log(P_gen_copy)
-        #compute cross-entropy loss between tgt_gen_toks and tgt_predicted_toks (log_p_gen_copy)
-        tgt_gen_toks_mask = (tgt_gen_toks != padx).float()
+        #compute cross-entropy loss between copy_gen_toks and tgt_predicted_toks (log_p_gen_copy)
+        copy_gen_toks = self.vocab.copy_gen_tok_idx(src_sents, tgt_rules).to(self.device)
+        copy_gen_toks_mask = (copy_gen_toks != padx).float()
         loss_gen_toks = torch.gather(log_P_gen_copy, dim=-1,
-            index=tgt_gen_toks.unsqueeze(-1)).squeeze(-1) * tgt_gen_toks_mask #(b, Q)
+            index=copy_gen_toks.unsqueeze(-1)).squeeze(-1) * copy_gen_toks_mask #(b, Q)
 
         #compute cross-entropy loss between tgt_rules and tgt_predicted_rules (log_P_rules)
-        tgt_rules = tgt_to_rules(tgt, padx).to(self.device)
-        tgt_rules_mask = (tgt_rules != padx).float()
+        tgt_rules_tensor = self.rules.sents2Tensor(tgt_rules).to(self.device)
+        tgt_rules_mask = (tgt_rules_tensor != padx).float()
         loss_rules = torch.gather(log_P_rules, dim=-1, 
-            index=tgt_rules.unsqueeze(-1)).squeeze(-1) * tgt_rules_mask #(b, Q)
+            index=tgt_rules_tensor.unsqueeze(-1)).squeeze(-1) * tgt_rules_mask #(b, Q)
 
         loss = (loss_gen_toks + loss_rules).sum(dim=-1) #(b,)
         return loss
@@ -98,7 +100,7 @@ class TransCopy(TransVanilla):
         src_ids_map_tgt = [self.vocab.tgt[word] if word not in unk_word_idx else len(self.vocab.tgt) + unk_word_idx[word] for word in src_sent]
         src_ids_map_tgt = torch.tensor(src_ids_map_tgt, dtype=torch.long, device=self.device)
 
-        hyps = [['<start>']]
+        hyps = [['root']]
         completed_hyps = []
         hyp_scores = torch.zeros(len(hyps), dtype=torch.float).to(self.device)
 

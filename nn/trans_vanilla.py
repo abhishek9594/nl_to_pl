@@ -9,27 +9,27 @@ from trans_encoder import TransEncoder
 from trans_decoder import TransDecoder
 from model_embeddings import ModelEmbeddings
 from positional_embeddings import PositionalEmbeddings
-from utils import NODE_MAP, RULE_MAP
-from utils import src_to_tensor, tgt_to_tensors
 from utils import subsequent_mask, clone
 
 class TransVanilla(nn.Module):
 
-    def __init__(self, embed_size, hidden_size, vocab, dropout_rate):
+    def __init__(self, embed_size, hidden_size, vocab, nodes, rules, dropout_rate):
         super(TransVanilla, self).__init__()
         self.d_model = embed_size
         self.d_ff = hidden_size
         self.dropout_rate = dropout_rate
         self.vocab = vocab
-        self.embeddings = ModelEmbeddings(self.d_model, self.vocab, NODE_MAP)
+        self.nodes = nodes
+        self.rules = rules
+        self.embeddings = ModelEmbeddings(self.d_model, self.vocab, self.nodes)
         self.pe = PositionalEmbeddings(self.d_model, self.dropout_rate)
         
         self.encoder_blocks = clone(TransEncoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
         self.decoder_blocks = clone(TransDecoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
         self.gen_tok_project = nn.Linear(self.d_model, len(self.vocab.tgt), bias=False)
-        self.rule_project = nn.Linear(self.d_model, len(RULE_MAP), bias=False)
+        self.rule_project = nn.Linear(self.d_model, len(self.rules), bias=False)
 
-    def forward(self, src, tgt, padx=0):
+    def forward(self, src_sents, tgt_tokens, tgt_rules, padx=0):
         """
         src: (list[list[str]])
         tgt: (list[list[str]])
@@ -163,7 +163,7 @@ class TransVanilla(nn.Module):
         """
         params = {
             'args': dict(embed_size=self.embeddings.embed_size, 
-            hidden_size=self.d_ff, vocab=self.vocab, dropout_rate=self.dropout_rate),
+            hidden_size=self.d_ff, vocab=self.vocab, nodes=self.nodes, rules=self.rules, dropout_rate=self.dropout_rate),
             'state_dict': self.state_dict()
         }
         torch.save(params, path)
