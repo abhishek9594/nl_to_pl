@@ -151,12 +151,12 @@ class Vocab(object):
         @return out_tensor (torch.tensor (max_sent_len, batch_size))
         """
         #filter any non-GenToken
-        tgt_tokens = [[tok for tok in sent if 'GenToken' in tok] for sent in tgt_sents]
+        tgt_tokens = [[tok if 'GenToken' in tok else '<pad>' for tok in sent] for sent in tgt_sents]
         return self.vocab.tgt.sents2Tensor(tgt_tokens)
     
-    def tgt_out_tensor(self, src_sents, tgt_sents):
+    def copy_gen_tok_idx(self, src_sents, tgt_sents):
         """
-        get tgt_out tensor representation for tgt_sents
+        get tgt_gen_tok idx tensor representation for tgt_sents
         where we account src_toks copied to tgt_sents
         @param src_sents (list[list[str]]): list of source sentences
         @param tgt_sents (list[list[str]]): list of target sentences
@@ -168,7 +168,7 @@ class Vocab(object):
         tgt_gen_toks_padded = pad_sents(tgt_gen_toks, self.vocab.tgt['<pad>'])
         return torch.tensor(tgt_gen_toks_padded, dtype=torch.long) #(b, Q)
 
-    def src_idx_tgt(self, src_sents, tgt_sents):
+    def src_idx_in_tgt(self, src_sents, tgt_sents):
         """
         compute src_tok idx in tgt_sent
         idx will be used while copying src_tok to tgt_sent
