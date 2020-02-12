@@ -152,7 +152,7 @@ class Vocab(object):
         """
         #filter any non-GenToken
         tgt_tokens = [[tok if 'GenToken' in tok else '<pad>' for tok in sent] for sent in tgt_sents]
-        return self.vocab.tgt.sents2Tensor(tgt_tokens)
+        return self.tgt.sents2Tensor(tgt_tokens)
     
     def copy_gen_tok_idx(self, src_sents, tgt_sents):
         """
@@ -164,8 +164,8 @@ class Vocab(object):
         """
         for src_sent, tgt_sent in zip(src_sents, tgt_sents):
             unk_word_idx = self.map_unk_src(src_sent)
-            tgt_gen_toks.append([self.vocab.tgt['<pad>'] if 'GenToken' not in tok else self.vocab.tgt[tok] if tok not in unk_word_idx else len(self.vocab.tgt) + unk_word_idx[tok] for tok in tgt_sent])
-        tgt_gen_toks_padded = pad_sents(tgt_gen_toks, self.vocab.tgt['<pad>'])
+            tgt_gen_toks.append([self.tgt['<pad>'] if 'GenToken' not in tok else self.tgt[tok] if tok not in unk_word_idx else len(self.tgt) + unk_word_idx[tok] for tok in tgt_sent])
+        tgt_gen_toks_padded = pad_sents(tgt_gen_toks, self.tgt['<pad>'])
         return torch.tensor(tgt_gen_toks_padded, dtype=torch.long) #(b, Q)
 
     def src_idx_in_tgt(self, src_sents, tgt_sents):
@@ -179,8 +179,8 @@ class Vocab(object):
         src_idx_tgt_sents = []
         for src_sent, tgt_sent in zip(src_sents, tgt_sents):
             unk_word_idx = self.map_unk_src(src_sent)
-            src_idx_tgt_sents.append([self.vocab.tgt[wrapGenTok(tok)] if wrapGenTok(tok) not in unk_word_idx else len(self.vocab.tgt) + unk_word_idx[wrapGenTok(tok)] for tok in src_sent])
-        src_idx_tgt_padded = pad_sents(src_idx_tgt_sents, self.vocab.src['<pad>'])
+            src_idx_tgt_sents.append([self.tgt[wrapGenTok(tok)] if wrapGenTok(tok) not in unk_word_idx else len(self.tgt) + unk_word_idx[wrapGenTok(tok)] for tok in src_sent])
+        src_idx_tgt_padded = pad_sents(src_idx_tgt_sents, self.src['<pad>'])
         max_tgt_len = max(len(tgt_sent) for tgt_sent in tgt_sents)
         #expand to adjust for Q length tgt_sent in (b,Q,K), as any word in a query (Q[i]) can come from src_sent
         src_idx_tgt_expanded = [[src_idx_tgt_padded[i]] * max_tgt_len for i in range(len(src_idx_tgt_padded))]
@@ -196,7 +196,7 @@ class Vocab(object):
 
     def map_unk_src(self, src_sent):
         """
-        map: src_tok -> id, such that self.vocab.tgt(src_tok) = unk_id
+        map: src_tok -> id, such that self.tgt(src_tok) = unk_id
         map all the sorce tokens which are <unk> in target vocab to ids
         @param src_sent (list[str]): src sent containing list of tokens
         @return unk_word_idx (dict(unk_word : id)): dictionary mapping the unk src tokens to id
@@ -205,7 +205,7 @@ class Vocab(object):
         unk_word_pos = 0
         for word in src_sent:
             word = wrapGenTok(word)
-            if word not in self.vocab.tgt and word not in unk_word_idx:
+            if word not in self.tgt and word not in unk_word_idx:
                 unk_word_idx[word] = unk_word_pos
                 unk_word_pos += 1
         return unk_word_idx
