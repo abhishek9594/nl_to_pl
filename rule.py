@@ -111,6 +111,11 @@ class Rule(object):
         rule_ids = self.rules2indices(sents)
         rules_padded = pad_sents(rule_ids, self.pad_id)
         return torch.tensor(rules_padded, dtype=torch.long)
+    
+    def head_nodes(self):
+        rules = [rule for (rule, rule_id) in sorted(self.rule2id.items(), key=lambda (k, v): v)]
+        rules_heads = [rule[: rule.find('->') - 1] if '->' in rule else rule for rule in rules]
+        return rules_heads
 
     @staticmethod
     def build(corpus):

@@ -68,7 +68,7 @@ def python_ast_to_parse_tree(node):
 
     return tree
 
-def decode_rule_to_tree(rules, root, rule_num=0):
+def decode_rules_to_tree(rules, root, rule_num=0):
     rule = rules[rule_num]
     node_types_labels = parse_rule(rule)
     for node_type, node_label in node_types_labels:
@@ -82,7 +82,7 @@ def decode_rule_to_tree(rules, root, rule_num=0):
         else:            
             rule_num += 1
             child_node = ASTNode(node_type, node_label)
-            child_node, rule_num = decode_rule_to_tree(rules, child_node, rule_num)
+            child_node, rule_num = decode_rules_to_tree(rules, child_node, rule_num)
             
         root.add_child(child_node)
     return root, rule_num
@@ -261,7 +261,7 @@ class Demonwrath(SpellCard):
     rules =  parse_tree.to_rules()
 
     root_node = ASTNode('root')
-    root_node, _ = decode_rule_to_tree(rules, root_node)
+    root_node, _ = decode_rules_to_tree(rules, root_node)
 
     
     ast_tree = parse_tree_to_python_ast(root_node)

@@ -154,9 +154,9 @@ class Vocab(object):
         tgt_tokens = [[tok if 'GenToken' in tok else '<pad>' for tok in sent] for sent in tgt_sents]
         return self.tgt.sents2Tensor(tgt_tokens)
     
-    def copy_gen_tok_idx(self, src_sents, tgt_sents):
+    def copy_gen_tok_ids(self, src_sents, tgt_sents):
         """
-        get tgt_gen_tok idx tensor representation for tgt_sents
+        get tgt_gen_tok ids tensor representation for tgt_sents
         where we account src_toks copied to tgt_sents
         @param src_sents (list[list[str]]): list of source sentences
         @param tgt_sents (list[list[str]]): list of target sentences
@@ -169,23 +169,23 @@ class Vocab(object):
         tgt_gen_toks_padded = pad_sents(tgt_gen_toks, self.tgt['<pad>'])
         return torch.tensor(tgt_gen_toks_padded, dtype=torch.long) #(b, Q)
 
-    def src_idx_in_tgt(self, src_sents, tgt_sents):
+    def src_ids_in_tgt(self, src_sents, tgt_sents):
         """
-        compute src_tok idx in tgt_sent
+        compute src_tok id in vocab.tgt
         idx will be used while copying src_tok to tgt_sent
         @param src_sents (list[list[str]]): list of source sentences
         @param tgt_sents (list[list[str]]): list of target sentences
-        @return src_idx_tensor (torch.tensor (max_src_sent_len, batch_size))
+        @return src_ids_map_tgt_tensor (torch.tensor (max_src_sent_len, batch_size))
         """
-        src_idx_tgt_sents = []
-        for src_sent, tgt_sent in zip(src_sents, tgt_sents):
+        src_ids_map_tgt = []
+        for src_sent in src_sents:
             unk_word_idx = self.map_unk_src(src_sent)
-            src_idx_tgt_sents.append([self.tgt[wrapGenTok(tok)] if wrapGenTok(tok) not in unk_word_idx else len(self.tgt) + unk_word_idx[wrapGenTok(tok)] for tok in src_sent])
-        src_idx_tgt_padded = pad_sents(src_idx_tgt_sents, self.src['<pad>'])
+            src_ids_map_tgt.append([self.tgt[wrapGenTok(tok)] if wrapGenTok(tok) not in unk_word_idx else len(self.tgt) + unk_word_idx[wrapGenTok(tok)] for tok in src_sent])
+        src_ids_map_tgt_padded = pad_sents(src_ids_map_tgt, self.src['<pad>'])
         max_tgt_len = max(len(tgt_sent) for tgt_sent in tgt_sents)
         #expand to adjust for Q length tgt_sent in (b,Q,K), as any word in a query (Q[i]) can come from src_sent
-        src_idx_tgt_expanded = [[src_idx_tgt_padded[i]] * max_tgt_len for i in range(len(src_idx_tgt_padded))]
-        return torch.tensor(src_idx_tgt_expanded, dtype=torch.long) #(b,Q,K)
+        src_ids_map_tgt_expanded = [[src_ids_map_tgt_padded[i]] * max_tgt_len for i in range(len(src_ids_map_tgt))]
+        return torch.tensor(src_ids_map_tgt_expanded, dtype=torch.long) #(b,Q,K)
 
     def max_unk_toks(self, src_sents):
         """
