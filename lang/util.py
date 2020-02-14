@@ -6,19 +6,16 @@ def typename(x):
         return x
     return x.__name__
 
-def type_of(tok):
-    #tok is a str variable eg.'GenToken[4]'
-    x = extract_val_GenToken(tok)
+def type_of(x):
+    #x is a str variable eg.'4'
+    if x in ['True', 'False']: return bool
     try:
         typed_var = int(x)
     except ValueError:
         try:
-            typed_var = bool(x)
+            typed_var = float(x)
         except ValueError:
-            try:
-                typed_var = float(x)
-            except ValueError:
-                typed_var = x
+            typed_var = x
     return type(typed_var)
 
 def parse_rule(rule):
