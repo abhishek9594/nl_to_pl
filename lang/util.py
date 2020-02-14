@@ -6,6 +6,21 @@ def typename(x):
         return x
     return x.__name__
 
+def type_of(tok):
+    #tok is a str variable eg.'GenToken[4]'
+    x = extract_val_GenToken(tok)
+    try:
+        typed_var = int(x)
+    except ValueError:
+        try:
+            typed_var = bool(x)
+        except ValueError:
+            try:
+                typed_var = float(x)
+            except ValueError:
+                typed_var = x
+    return type(typed_var)
+
 def parse_rule(rule):
     """
     rule = head_node_tp -> child1_tp[label1?] child2_tp[label2?] ...
