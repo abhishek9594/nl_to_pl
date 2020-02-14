@@ -33,13 +33,14 @@ from docopt import docopt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import pickle
 
 from vocab import Vocab
 from node import Node
 from rule import Rule
 from parse import parse
-from utils import read_corpus, batch_iter, save_sents, compute_bleu_score
-from nn.trans_copy import TransCopy
+from utils import read_corpus, batch_iter, save_sents, compute_bleu_score, rules_to_code
+from trans_copy import TransCopy
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -81,20 +82,20 @@ def decode(model, test_data_src, beam_size, max_decoding_time_step):
     @param test_data_src (list[list[str]): list of test source sentences
     @param beam_size (int): beam size
     @param max_decoding_time_step (int): maximum decoding time steps
-    @return gen_tgt_sents (list[list[str]])
+    @return gen_tgt_rules (list[list[str]])
     """
     was_training = model.training
     model.eval()
 
-    gen_tgt_sents = []
+    gen_tgt_rules = []
     with torch.no_grad():
         for src in test_data_src:
-            gen_tgt_sent = model.beam_search(src, beam_size, max_decoding_time_step)
-            gen_tgt_sents.append(gen_tgt_sent)
+            gen_rules = model.beam_search(src, beam_size, max_decoding_time_step)
+            gen_tgt_rules.append(gen_rules)
 
     if was_training:
         model.train
-    return gen_tgt_sents
+    return gen_tgt_rules
 
 def train(args):
     """
@@ -186,18 +187,19 @@ def test(args):
     model = TransCopy.load(args['MODEL_PATH'])
     model = model.to(device)
 
-    test_data_src = read_corpus(args['TEST_SOURCE_FILE'], domain='src')
-    test_data_tgt = read_corpus(args['TEST_TARGET_FILE'], domain='tgt')
+    (test_data_src, test_data_tgt), sent_str_map = read_corpus(args['TEST_SOURCE_FILE'], args['TEST_TARGET_FILE'])
     
-    gen_tgt_sents = decode(model, test_data_src, 
+    gen_tgt_rules = decode(model, test_data_src, 
                             beam_size=int(args['--beam-size']),
                             max_decoding_time_step=int(args['--max-decoding-time-step']))
+
+    gen_tgt_sents = [rules_to_code(gen_rules, code) for (gen_rules, code) in zip(gen_tgt_rules, test_data_tgt)]
 
     save_sents(gen_tgt_sents, args['OUTPUT_FILE'])
 
     bleu_score = compute_bleu_score(refs=test_data_tgt, hyps=gen_tgt_sents)
-    em = compute_exact_match(refs=test_data_tgt, hyps=gen_tgt_sents)
-    print('BLEU score = %.2f, EM = %.2f' % (bleu_score, em))
+    #em = compute_exact_match(refs=test_data_tgt, hyps=gen_tgt_sents)
+    print('BLEU score = %.2f' % (bleu_score))
 
 if __name__ == "__main__":
     args = docopt(__doc__)

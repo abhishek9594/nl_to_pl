@@ -5,13 +5,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from trans_encoder import TransEncoder
-from trans_decoder import TransDecoder
-from model_embeddings import ModelEmbeddings
-from positional_embeddings import PositionalEmbeddings
-from utils import subsequent_mask
+from nn.trans_encoder import TransEncoder
+from nn.trans_decoder import TransDecoder
+from nn.model_embeddings import ModelEmbeddings
+from nn.positional_embeddings import PositionalEmbeddings
+from nn.utils import subsequent_mask
 
 from trans_vanilla import TransVanilla
+
+from lang.util import typename, parse_rule, type_of, extract_val_GenToken
+from lang.py.grammar import is_builtin_type, is_terminal_ast_type, type_str_to_type
 
 class TransCopy(TransVanilla):
 
@@ -44,19 +47,19 @@ class TransCopy(TransVanilla):
         rules_decoded = self.rule_project(tgt_encoded)
         log_P_rules = F.log_softmax(rules_decoded, dim=-1)
 
-        src_idx_tgt = self.vocab.src_idx_in_tgt(src_sents, tgt_rules).to(self.device)
+        src_ids_map_tgt = self.vocab.src_ids_in_tgt(src_sents, tgt_rules).to(self.device)
         max_unk_src_toks = self.vocab.max_unk_toks(src_sents)
         A_QK = torch.sum(torch.stack(q_key_src_dots, dim=0), dim=0) / 8 #normalize by num heads
         P_gen = self.p_gen(Y_e=src_encoded, A_QK=A_QK, gen_toks=gen_toks_tensor, nodes=nodes_tensor, Y_d=tgt_encoded)
         P_gen_copy = torch.cat((torch.mul(P_gen.unsqueeze(-1) , P_gen_tok), torch.zeros(P_gen_tok.shape[0], P_gen_tok.shape[1], max_unk_src_toks, device=self.device)), dim=-1)
         P_copy =  torch.mul((1 - P_gen).unsqueeze(-1), A_QK) #(b, Q, K)
-        P_gen_copy = P_gen_copy.scatter_add(dim=-1, index=src_idx_tgt, source=P_copy)
+        P_gen_copy = P_gen_copy.scatter_add(dim=-1, index=src_ids_map_tgt, source=P_copy)
                 
         copy_mask = (P_gen_copy != 0)
         P_gen_copy = P_gen_copy.masked_fill(copy_mask == 0, 1.0)
         log_P_gen_copy = torch.log(P_gen_copy)
         #compute cross-entropy loss between copy_gen_toks and tgt_predicted_toks (log_p_gen_copy)
-        copy_gen_toks = self.vocab.copy_gen_tok_idx(src_sents, tgt_rules).to(self.device)
+        copy_gen_toks = self.vocab.copy_gen_tok_ids(src_sents, tgt_rules).to(self.device)
         copy_gen_toks_mask = (copy_gen_toks != padx).float()
         loss_gen_toks = torch.gather(log_P_gen_copy, dim=-1,
             index=copy_gen_toks.unsqueeze(-1)).squeeze(-1) * copy_gen_toks_mask #(b, Q)
@@ -78,7 +81,7 @@ class TransCopy(TransVanilla):
 
     def p_gen(self, Y_e, A_QK, gen_toks, nodes, Y_d):
         X_d = self.pe(self.embeddings.gen_tok_embedding(gen_toks) + self.embeddings.node_embedding(nodes))
-        return torch.sigmoid(self.context_proj(torch.bmm(A_QK, Y_e)) + self.dec_in_proj(X_d) + self.dec_out_proj(Y_d)).squeeze(-1)
+        return torch.sigmoid(self.context_proj(torch.bmm(A_QK, Y_e)) + self.dec_in_proj(X_d) + self.dec_out_proj(Y_d)).squeeze(-1) #(b, Q)
 
     def beam_search(self, src_sent, beam_size, max_decoding_time_step):
         """
@@ -87,29 +90,84 @@ class TransCopy(TransVanilla):
         @param beam_size (int)
         @param max_decoding_time_step (int): decode the hyp until <eos> or max decoding time step
         @return best_hyp (list[str]): best possible hyp
-        """
-        """
-        src_padded = self.vocab.src.sents2Tensor([src_sent]).to(self.device)
-        src_encoded = self.encode(src_padded, src_mask=None)
+        """        
+        src_tensor = self.vocab.src.sents2Tensor([src_sent]).to(self.device)
+        src_encoded = self.encode(src_tensor, src_mask=None)
 
         t = 0
 
-        unk_word_idx = map_src_words_tgt(src_sent, self.vocab)
-        idx_unk_word = {idx : word for word, idx in unk_word_idx.items()} #inverse map idx => unk_word
-        max_unk_src_words = len(idx_unk_word)
-        src_ids_map_tgt = [self.vocab.tgt[word] if word not in unk_word_idx else len(self.vocab.tgt) + unk_word_idx[word] for word in src_sent]
-        src_ids_map_tgt = torch.tensor(src_ids_map_tgt, dtype=torch.long, device=self.device)
+        unk_tok_ids = self.vocab.map_unk_src(src_sent)
+        ids_unk_tok = {id : tok for tok, id in unk_tok_ids.items()} #inverse map idx => unk_tok
+        max_unk_src_toks = len(ids_unk_tok)
+        src_ids_map_tgt = self.vocab.src_ids_in_tgt([src_sent], [['dummy']]).to(self.device)[:, -1, :]
 
-        hyps = [['root']]
+        explore_nodes = ['root']
+        batch_toks = [] #input tokens
+        hyp = []
+        while len(explore_nodes):
+            curr_node = explore_nodes.pop()
+            batch_toks.append(curr_node)
+            gen_toks_tensor = self.vocab.tgt_sents2Tensor([batch_toks]).to(self.device)
+            nodes_tensor = self.nodes.sents2Tensor([batch_toks]).to(self.device)
+            tgt_mask = subsequent_mask(nodes_tensor.shape[-1]).byte().to(self.device)
+            tgt_encoded, q_key_src_dots = self.decode(src_encoded, gen_toks_tensor, nodes_tensor, src_mask=None, tgt_mask=tgt_mask)
+
+            node_type = type_str_to_type(curr_node)
+
+            if is_terminal_ast_type(node_type) or node_type == 'epsilon':
+                hyp.append('GenToken[<eob>]')
+
+            elif is_builtin_type(node_type):
+                #GenToken
+                gen_toks_decoded = self.gen_tok_project(tgt_encoded)
+                P_gen_tok = F.softmax(gen_toks_decoded, dim=-1)[:, -1, :] #extract last gen tok
+                A_QK = torch.sum(torch.stack(q_key_src_dots, dim=0), dim=0) / 8 #normalize by num heads
+                P_gen = self.p_gen(Y_e=src_encoded, A_QK=A_QK, gen_toks=gen_toks_tensor, nodes=nodes_tensor, Y_d=tgt_encoded)[:, -1] #(b,)
+                P_gen_copy = torch.cat((torch.mul(P_gen.unsqueeze(-1) , P_gen_tok), torch.zeros(P_gen_tok.shape[0], max_unk_src_toks, device=self.device)), dim=-1)
+                P_copy =  torch.mul((1 - P_gen).unsqueeze(-1), A_QK[:, -1, :]) #(b, K)
+                P_gen_copy = P_gen_copy.scatter_add(dim=-1, index=src_ids_map_tgt, source=P_copy)  
+
+                gen_tok_mask = [0 if 'GenToken' not in self.vocab.tgt.id2word[i] else int(node_type == type_of(extract_val_GenToken(self.vocab.tgt.id2word[i]))) for i in range(len(self.vocab.tgt))]
+                copy_mask = [int(node_type == type_of(ids_unk_tok[i])) for i in range(len(ids_unk_tok))]
+                gen_tok_mask.extend(copy_mask)
+                gen_copy_mask = ((P_gen_copy != 0) & (torch.tensor([gen_tok_mask]).byte().to(self.device)))
+
+                P_gen_copy = P_gen_copy.masked_fill(gen_copy_mask == 0, 0.0)
+                max_tok_id = torch.log(P_gen_copy).argmax().item()
+                gen_tok = self.vocab.tgt.id2word[max_tok_id] if max_tok_id < len(self.vocab.tgt) else ids_unk_tok[max_tok_id - len(self.vocab.tgt)]
+                hyp.extend([gen_tok, 'GenToken[<eob>]'])
+
+            else:
+                rules_decoded = self.rule_project(tgt_encoded) #(b, Q, R)
+                out_rules = rules_decoded[:, -1, :] #(b, R)
+                rules_mask = [[curr_node == rule_head for rule_head in self.rules.head_nodes()]]
+                rules_mask = torch.tensor(rules_mask).byte().to(self.device)
+                out_rules = out_rules.masked_fill(rules_mask == 0, -float('inf'))
+                log_P_rules = F.log_softmax(out_rules, dim=-1)
+                max_rule_id = log_P_rules.argmax().item()
+                rule = self.rules.id2rule[max_rule_id]
+                children_types_labels = parse_rule(rule)
+                child_nodes = [typename(child_type) for (child_type, _) in children_types_labels]
+                explore_nodes.extend(child_nodes[::-1]) #reverse due to DFS
+                hyp.append(rule)
+        return hyp
+        """
+
+        explore_nodes = [['root']]
+        batch_toks = [['root']]
+        hyps = []
         completed_hyps = []
-        hyp_scores = torch.zeros(len(hyps), dtype=torch.float).to(self.device)
+        hyp_scores = torch.zeros(len(batch_toks), dtype=torch.float).to(self.device)
 
         while len(completed_hyps) < beam_size and t < max_decoding_time_step:
-            num_hyp = len(hyps)
+            num_hyp = len(explore_nodes)
             src_encoded_batch = src_encoded.expand(num_hyp, src_encoded.shape[1], src_encoded.shape[2])
-            x = self.vocab.tgt.sents2Tensor(hyps).to(self.device)
-            tgt_mask = subsequent_mask(x.shape[-1]).byte().to(self.device)
-            tgt_encoded, q_key_src_dots = self.decode(src_encoded_batch, x, src_mask=None, tgt_mask=tgt_mask)
+            gen_toks_tensor = self.vocab.tgt_sents2Tensor(batch_toks).to(self.device)
+            nodes_tensor = self.nodes.sents2Tensor(batch_toks).to(self.device)
+            tgt_mask = subsequent_mask(nodes_tensor.shape[-1]).byte().to(self.device)
+            tgt_encoded, q_key_src_dots = self.decode(src_encoded_batch, gen_toks_tensor, nodes_tensor, src_mask=None, tgt_mask=tgt_mask)
+
+            log_P_rules = F.log_softmax(self.rule_project(tgt_encoded), dim=-1)
 
             tgt_decoded = self.vocab_project(tgt_encoded)
             P_vocab = F.softmax(tgt_decoded, dim=-1)[:, -1, :] #extract last generated word
@@ -165,7 +223,6 @@ class TransCopy(TransVanilla):
         best_hyp = [str(word) for word in completed_hyps[0][0]]
         return best_hyp
         """
-        pass
     
     @staticmethod
     def load(model_path):

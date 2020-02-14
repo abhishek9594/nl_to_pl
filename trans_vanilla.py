@@ -5,11 +5,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from trans_encoder import TransEncoder
-from trans_decoder import TransDecoder
-from model_embeddings import ModelEmbeddings
-from positional_embeddings import PositionalEmbeddings
-from utils import subsequent_mask, clone
+from nn.trans_encoder import TransEncoder
+from nn.trans_decoder import TransDecoder
+from nn.model_embeddings import ModelEmbeddings
+from nn.positional_embeddings import PositionalEmbeddings
+from nn.utils import subsequent_mask, clone
 
 class TransVanilla(nn.Module):
 
