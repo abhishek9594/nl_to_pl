@@ -188,11 +188,11 @@ def de_sugar_code(code, ref_raw_code):
         code = code.replace('def dummy():\n    pass', '')
 
     if p_elif.match(ref_raw_code):
-        # remove leading if true
-        code = code.replace('if True:\n    pass', '')
+        # remove leading if
+        code = code[code.find('elif'):]
     elif p_else.match(ref_raw_code):
-        # remove leading if true
-        code = code.replace('if True:\n    pass', '')
+        # remove leading if
+        code = code[code.find('else:'):]
 
     # try/catch/except stuff
     if p_try.match(ref_raw_code):
