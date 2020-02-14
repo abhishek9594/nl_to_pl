@@ -7,6 +7,10 @@ import nltk
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 import re
 
+from astnode import ASTNode
+from parse import decode_rules_to_tree, parse_tree_to_python_ast, de_sugar_code
+import astor
+
 QUOTED_STRING_RE = re.compile(r"(?P<quote>['\"])(?P<string>.*?)(?<!\\)(?P=quote)")
 
 def wrapGenTok(tok):
@@ -72,22 +76,24 @@ def pad_sents(sents, pad_id=0):
 def save_sents(sents, file_path):
     """
     save sentences in a file line by line
-    @param sents (list[list[str]]): list of sentences
+    @param sents (list[str]): list of sentences
     @param file_path (str): location to save senetnces
     """
     with open(file_path, 'w') as file_obj:
         for sent in sents:
-            file_obj.write(' '.join(sent) + '\n')
+            file_obj.write(sent + '\n')
 
 def compute_bleu_score(refs, hyps):
     """
     compute bleu score for the given references against hypotheses
-    @param refs (list[list[str]]): list of reference sents with <start> and <eos>
-    @param hyps (list[list[str]]): list of generated candidate sents
+    @param refs (list[str]): list of reference sents with <start> and <eos>
+    @param hyps (list[str]): list of generated candidate sents
     @return bleu_score (float): BLEU score for the word overlap
     """
-    bleu_score = corpus_bleu([[ref[1:-1]] for ref in refs],
-                            hyps,
+    refs_tokenized = [nltk.word_tokenize(ref) for ref in refs]
+    hyps_tokenized = [nltk.word_tokenize(hyp) for hyp in hyps]
+    bleu_score = corpus_bleu([[ref] for ref in refs_tokenized],
+                            hyps_tokenized,
                             smoothing_function=SmoothingFunction().method4)
     return bleu_score
 
@@ -113,3 +119,14 @@ def batch_iter(data, batch_size, shuffle=False):
         tgt_sents = [e[1] for e in examples]
 
         yield src_sents, tgt_sents
+
+def rules_to_code(rules, code):
+    #get Python code for rules
+    root_node = ASTNode('root')
+    root_node, _ = decode_rules_to_tree(rules, root_node)
+    
+    ast_tree = parse_tree_to_python_ast(root_node)
+    out_code = astor.to_source(ast_tree)
+    format_code = de_sugar_code(out_code, code)
+    final_code = format_code.replace('\n', '')
+    return final_code
