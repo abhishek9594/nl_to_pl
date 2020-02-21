@@ -1,5 +1,5 @@
 #adapted from https://github.com/pcyin/NL2code
-from py.grammar import type_str_to_type
+from grammar import type_str_to_type
 
 def typename(x):
     if isinstance(x, str):

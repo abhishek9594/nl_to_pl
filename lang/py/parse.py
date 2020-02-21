@@ -4,8 +4,8 @@ import astor
 import re
 
 from astnode import ASTNode
-from lang.py.grammar import is_compositional_leaf, PY_AST_NODE_FIELDS, NODE_FIELD_BLACK_LIST, is_builtin_type, is_terminal_ast_type
-from lang.util import typename, parse_rule, extract_val_GenToken
+from grammar import is_compositional_leaf, PY_AST_NODE_FIELDS, NODE_FIELD_BLACK_LIST, is_builtin_type, is_terminal_ast_type
+from util import typename, parse_rule, extract_val_GenToken
 
 
 def python_ast_to_parse_tree(node):

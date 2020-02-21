@@ -1,8 +1,8 @@
 #adapted from https://github.com/pcyin/NL2code
 from collections import Iterable
 
-from lang.util import typename
-from lang.py.grammar import is_builtin_type
+from util import typename
+from grammar import is_builtin_type
 
 class ASTNode(object):
     def __init__(self, node_type, label=None, value=None, children=None):
