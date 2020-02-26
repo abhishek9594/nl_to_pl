@@ -4,14 +4,6 @@ from __future__ import division
 import math
 import numpy as np
 import nltk
-from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
-import re
-
-from astnode import ASTNode
-from parse import decode_rules_to_tree, parse_tree_to_python_ast, de_sugar_code
-import astor
-
-QUOTED_STRING_RE = re.compile(r"(?P<quote>['\"])(?P<string>.*?)(?<!\\)(?P=quote)")
 
 def wrapGenTok(tok):
     #wrap tok inside `GenToken[]`
@@ -19,40 +11,19 @@ def wrapGenTok(tok):
 
 def read_corpus(src_file, tgt_file):
     """
-    extract input tokens using NLTK, whereas parse output tokens according to its syntax
-    @param file_path (str): path to file containing corpus
+    extract input tokens using NLTK, whereas leave output tokens unformatted
+    @param src_file (str): path to file containing input sents
+    @param tgt_file (str): path to file containing output sents
     @return data ((list[list[str]], list[list[str]])): tuples of list of src and tgt tokens
-    @return sent_str_map {sent_num -> str_map{str -> str_repr}}: mapping sent_id to str_map (maps str_repr to str), useful for mapping quoted strings
     """
     src_data, tgt_data = [], []
-    sent_str_map = dict()
-    for sent_num, src_sent in enumerate(open(src_file, 'r')):
-        str_map = dict()
-        str_set = set()
-        str_count = 0
-        matches = QUOTED_STRING_RE.findall(src_sent)
-        for quote, raw_str in matches:
-            if raw_str in str_set:
-                continue
-            str_repr = '_STR%d_' % str_count
-            str_literal = quote + raw_str + quote
-            str_map[str_repr] = str_literal
-            str_set.add(raw_str)
+    for src_sent, tgt_sent in zip(open(src_file, 'r'), open(tgt_file, 'r')):   
+        src_sent_toks = nltk.word_tokenize(src_sent)
+        src_data.append(src_sent_toks)
 
-            src_sent = src_sent.replace(str_literal, str_repr)
-            str_count += 1
+        tgt_data.append(tgt_sent)
 
-        src_toks = nltk.word_tokenize(src_sent)
-        src_data.append(src_toks)
-        if len(str_map) > 0: sent_str_map[sent_num] = str_map
-
-    for sent_num, tgt_sent in enumerate(open(tgt_file, 'r')):
-        if sent_num in sent_str_map:
-            for str_repr, str_literal in sent_str_map[sent_num].items():
-                tgt_sent = tgt_sent.replace(str_literal, str_repr)
-        tgt_data.append(tgt_sent.rstrip())
-        
-    return (src_data, tgt_data), sent_str_map
+    return src_data, tgt_data
 
 def pad_sents(sents, pad_id=0):
     """
@@ -83,20 +54,6 @@ def save_sents(sents, file_path):
         for sent in sents:
             file_obj.write(sent + '\n')
 
-def compute_bleu_score(refs, hyps):
-    """
-    compute bleu score for the given references against hypotheses
-    @param refs (list[str]): list of reference sents with <start> and <eos>
-    @param hyps (list[str]): list of generated candidate sents
-    @return bleu_score (float): BLEU score for the word overlap
-    """
-    refs_tokenized = [nltk.word_tokenize(ref) for ref in refs]
-    hyps_tokenized = [nltk.word_tokenize(hyp) for hyp in hyps]
-    bleu_score = corpus_bleu([[ref] for ref in refs_tokenized],
-                            hyps_tokenized,
-                            smoothing_function=SmoothingFunction().method4)
-    return bleu_score
-
 def batch_iter(data, batch_size, shuffle=False):
     """
     Yield batches of source and target sentences reverse sorted by source sentences' lengths (largest to smallest)
@@ -119,14 +76,3 @@ def batch_iter(data, batch_size, shuffle=False):
         tgt_sents = [e[1] for e in examples]
 
         yield src_sents, tgt_sents
-
-def rules_to_code(rules, code):
-    #get Python code for rules
-    root_node = ASTNode('root')
-    root_node, _ = decode_rules_to_tree(rules, root_node)
-    
-    ast_tree = parse_tree_to_python_ast(root_node)
-    out_code = astor.to_source(ast_tree)
-    format_code = de_sugar_code(out_code, code)
-    final_code = format_code.replace('\n', '')
-    return final_code
