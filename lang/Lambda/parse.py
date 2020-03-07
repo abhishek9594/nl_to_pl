@@ -333,14 +333,16 @@ if __name__ == '__main__':
 
     grammar = ASDLGrammar.from_text(asdl_desc)
     lf = parse_lambda_expr('( lambda $0 e ( and ( flight $0 ) ( airline $0 al0 ) ( from $0 ci0 ) ( to $0 ci1 ) ) )')
-    lf = parse_lambda_expr('( lambda $0 e ( loc:t c0 $0 ) )')
-    
+    #lf = parse_lambda_expr('( lambda $0 e ( loc:t c0 $0 ) )')
+
     parser = LambdaCalculusTransitionSystem(grammar)
 
-    ast_tree = logical_form_to_ast(grammar, lf)
+    ast = logical_form_to_ast(grammar, lf)
+    print(ast)
 
     #need to predict these during decoding
-    actions = parser.get_actions(ast_tree)
+    actions = parser.get_actions(ast)
+    print(actions)
     hyp = Hypothesis()
     for action in actions:
         hyp.apply_action(action)

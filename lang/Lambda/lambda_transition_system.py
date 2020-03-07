@@ -3,7 +3,7 @@
 
 from transition_system import TransitionSystem, GenTokenAction, ReduceAction
 
-from logical_form import ast_to_logical_form, logical_form_to_ast, Node, parse_lambda_expr
+from parse import ast_to_logical_form, logical_form_to_ast, Node, parse_lambda_expr
 
 class LambdaCalculusTransitionSystem(TransitionSystem):
     def tokenize_code(self, code, mode=None):
