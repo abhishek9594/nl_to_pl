@@ -3,13 +3,13 @@
 vocab.py: Vocabulary Generation
 
 Usage:
-    vocab.py --train-src=<file> --train-tgt=<file> VOCAB_FILE [options]
+    vocab.py --lang=<str> --data=<file> VOCAB_FILE [options]
 
 Options:
-    -h --help                  Show this screen.
-    --train-src=<file>         File of training source sentences
-    --train-tgt=<file>         File of training target sentences
-    --freq-cutoff=<int>        frequency cutoff [default: 5]
+    -h --help                   Show this screen.
+    --data=<file>               file containing src and tgt sents
+    --freq-cutoff=<int>         frequency cutoff [default: 1]
+    --lang=<str>                target language
 """
 
 from collections import Counter
@@ -19,7 +19,6 @@ import pickle
 import torch
 
 from utils import read_corpus, pad_sents, wrapGenTok
-from parse import parse
 
 
 class VocabEntry(object):
@@ -31,8 +30,10 @@ class VocabEntry(object):
             self.word2id = word2id
         else:
             self.word2id = dict()
-            self.word2id['<pad>'] = 0       #Pad Token
-            self.word2id['<unk>'] = 1       #Unknown Token
+            self.word2id['<pad>'] = 0       #pad Token
+            self.word2id['<start>'] = 1     #start Token
+            self.word2id['<eos>'] = 2       #end Token
+            self.word2id['<unk>'] = 3       #unknown Token
         self.pad_id = self.word2id['<pad>']
         self.unk_id = self.word2id['<unk>']
         self.id2word = {v: k for k, v in self.word2id.items()}
@@ -253,16 +254,29 @@ class Vocab(object):
 if __name__ == '__main__':
     args = docopt(__doc__)
 
-    print('read in source sentences: %s' % args['--train-src'])
-    print('read in target sentences: %s' % args['--train-tgt'])
+    print('read in sentences: %s' % args['--data'])
 
-    (src_sents, tgt_sents), _ = read_corpus(args['--train-src'], args['--train-tgt'])
-    tgt_rules = [parse(code).to_rules() for code in tgt_sents]
-    tgt_tokens = [[token for token in rules if 'GenToken' in token] for rules in tgt_rules]
+    src_sents, tgt_sents = read_corpus(args['--data'])
 
+    lang = args['--lang']
+    if lang == 'lambda':
+        from lang.Lambda.lambda_transition_system import LambdaCalculusTransitionSystem
+        from lang.Lambda.transition_system import GenTokenAction
+        from lang.Lambda.asdl import ASDLGrammar
+        from lang.Lambda.parse import parse_lambda_expr, logical_form_to_ast
 
-    vocab = Vocab.build(src_sents, tgt_tokens, int(args['--freq-cutoff']))
-    print('generated vocabulary, source %d words, target %d words' % (len(vocab.src), len(vocab.tgt)))
+        asdl_desc = open('lang/Lambda/lambda_asdl.txt').read()
+        grammar = ASDLGrammar.from_text(asdl_desc)
+        parser = LambdaCalculusTransitionSystem(grammar)
+        
+        tgt_asts = [logical_form_to_ast(grammar, parse_lambda_expr(sent)) for sent in tgt_sents]
+        tgt_actions = [parser.get_actions(ast) for ast in tgt_asts]
+        tgt_tokens = [[token for token in actions if isinstance(token, GenTokenAction)] for actions in tgt_actions]
 
-    vocab.save(args['VOCAB_FILE'])
-    print('vocabulary saved to %s' % args['VOCAB_FILE'])
+        vocab = Vocab.build(src_sents, tgt_tokens, int(args['--freq-cutoff']))
+        print('generated vocabulary, source %d words, target %d words' % (len(vocab.src), len(vocab.tgt)))
+
+        vocab.save(args['VOCAB_FILE'])
+        print('vocabulary saved to %s' % args['VOCAB_FILE'])
+    else:
+        print('language:  %s currently not supported' % (lang))
