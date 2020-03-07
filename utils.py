@@ -14,7 +14,7 @@ def read_corpus(src_file, tgt_file):
     extract input tokens using NLTK, whereas leave output tokens unformatted
     @param src_file (str): path to file containing input sents
     @param tgt_file (str): path to file containing output sents
-    @return data ((list[list[str]], list[list[str]])): tuples of list of src and tgt tokens
+    @return data ((list[list[str]], list[str])): tuples of list of src and tgt tokens
     """
     src_data, tgt_data = [], []
     for src_sent, tgt_sent in zip(open(src_file, 'r'), open(tgt_file, 'r')):   
