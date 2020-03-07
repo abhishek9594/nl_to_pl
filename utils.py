@@ -9,15 +9,18 @@ def wrapGenTok(tok):
     #wrap tok inside `GenToken[]`
     return 'GenToken[' + tok + ']'
 
-def read_corpus(src_file, tgt_file):
+def read_corpus(data_file):
     """
     extract input tokens using NLTK, whereas leave output tokens unformatted
-    @param src_file (str): path to file containing input sents
-    @param tgt_file (str): path to file containing output sents
+    @param data_file (str): file containing src_sent and tgt_sent sep by '\t', each line is delineated by '\n'
     @return data ((list[list[str]], list[str])): tuples of list of src and tgt tokens
     """
     src_data, tgt_data = [], []
-    for src_sent, tgt_sent in zip(open(src_file, 'r'), open(tgt_file, 'r')):   
+    for sent in open(data_file, 'r'):
+        sents = sent.split('\n')[0].split('\t') #[src_sent, tgt_sent]
+        src_sent = sents[0]
+        tgt_sent = sents[1]
+        
         src_sent_toks = nltk.word_tokenize(src_sent)
         src_data.append(src_sent_toks)
 
