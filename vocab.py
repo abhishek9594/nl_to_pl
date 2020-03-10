@@ -7,9 +7,9 @@ Usage:
 
 Options:
     -h --help                   Show this screen.
+    --lang=<str>                target language
     --data=<file>               file containing src and tgt sents
     --freq-cutoff=<int>         frequency cutoff [default: 1]
-    --lang=<str>                target language
 """
 
 from collections import Counter
