@@ -23,7 +23,7 @@ class Node(object):
             self.node2id = node2id
         else:
             self.node2id = dict()
-            self.node2id['<pad>'] = 0       #Pad Token
+            self.node2id['<pad>'] = 0       #pad token
         self.pad_id = self.node2id['<pad>']
         self.id2node = {v: k for k, v in self.node2id.items()}
 
@@ -111,7 +111,7 @@ class Node(object):
     def build(grammar):
         """ Given a grammar (ASDL) description of language, extract all node types
         @param grammar (ASDLGrammar): grammar object described in the asdl file for the target language
-        @returns nodes (Node): Node instance produced from provided corpus
+        @returns nodes (Node): Node instance produced from the grammar
         """
         nodes = Node()
         
