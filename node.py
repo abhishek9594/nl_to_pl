@@ -3,22 +3,16 @@
 node.py: Map all the node types of the PL grammar to node_id
 
 Usage:
-    node.py --train-src=<file> --train-tgt=<file> NODE_FILE [options]
+    node.py --lang=<str> NODE_FILE [options]
 
 Options:
-    -h --help                  Show this screen.
-    --train-code=<file>        File containing all the code
+    -h --help                   Show this screen.
+    --lang=<str>                target language
 """
 
-from collections import Counter
 from docopt import docopt
-from itertools import chain
 import pickle
 import torch
-
-from utils import read_corpus, pad_sents
-from parse import parse
-from lang.py.grammar import PY_AST_NODE_FIELDS
 
 class Node(object):
     def __init__(self, node2id=None):
@@ -114,18 +108,16 @@ class Node(object):
         return torch.tensor(nodes_padded, dtype=torch.long)
 
     @staticmethod
-    def build(corpus):
-        """ Given a corpus of list of list of nodes construct a Node obj.
-        @param corpus (list[list[str]]): corpus of data_nodes constructed in the main
+    def build(grammar):
+        """ Given a grammar (ASDL) description of language, extract all node types
+        @param grammar (ASDLGrammar): grammar object described in the asdl file for the target language
         @returns nodes (Node): Node instance produced from provided corpus
         """
         nodes = Node()
-        node_freq = Counter(chain(*corpus))
-        top_nodes = sorted(node_freq.keys(), key=lambda n: node_freq[n], reverse=True)
-        for node in top_nodes:
-            nodes.add(node)
-        for node in PY_AST_NODE_FIELDS:
-            if node not in nodes: nodes.add(node)
+        
+        for type in grammar.types:
+            nodes.add(type.name) #ASDLType(type_name)
+
         return nodes
 
     def save(self, file_path):
@@ -147,16 +139,17 @@ class Node(object):
 if __name__ == '__main__':
     args = docopt(__doc__)
 
-    print('read in source sentences: %s' % args['--train-src'])
-    print('read in target sentences: %s' % args['--train-tgt'])
+    lang = args['--lang']
+    if lang == 'lambda':
+        from lang.Lambda.asdl import ASDLGrammar
 
-    (_, tgt_sents), _ = read_corpus(args['--train-src'], args['--train-tgt'])
-    tgt_tokens = [parse(code).to_tokens() for code in tgt_sents]
-    #filter GenTokens
-    data_nodes = [[token for token in tokens if 'GenToken' not in token] for tokens in tgt_tokens]
+        asdl_desc = open('lang/Lambda/lambda_asdl.txt').read()
+        grammar = ASDLGrammar.from_text(asdl_desc)
 
-    nodes = Node.build(data_nodes)
-    print('generated nodes: %d' % (len(nodes)))
+        nodes = Node.build(grammar)
+        print('generated nodes: %d' % (len(nodes)))
 
-    nodes.save(args['NODE_FILE'])
-    print('nodes saved to %s' % args['NODE_FILE'])
+        nodes.save(args['NODE_FILE'])
+        print('nodes saved to %s' % args['NODE_FILE'])
+    else:
+        print('language:  %s currently not supported' % (lang))
