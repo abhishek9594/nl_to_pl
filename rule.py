@@ -3,21 +3,16 @@
 rule.py: Map all the rule types of the PL grammar to rule_id
 
 Usage:
-    rule.py --train-src=<file> --train-tgt=<file> RULE_FILE [options]
+    rule.py --lang=<str> RULE_FILE [options]
 
 Options:
-    -h --help                  Show this screen.
-    --train-code=<file>        File containing all the code
+    -h --help                   Show this screen.
+    --lang=<str>                target language
 """
 
-from collections import Counter
 from docopt import docopt
-from itertools import chain
 import pickle
 import torch
-
-from utils import read_corpus, pad_sents
-from parse import parse
 
 class Rule(object):
     def __init__(self, rule2id=None):
@@ -28,8 +23,10 @@ class Rule(object):
             self.rule2id = rule2id
         else:
             self.rule2id = dict()
-            self.rule2id['<pad>'] = 0       #Pad Token
+            self.rule2id['<pad>'] = 0       #Pad token
+            self.rule2id['Reduce'] = 1      #Reduce action token
         self.pad_id = self.rule2id['<pad>']
+        self.reduce_id = self.rule2id['Reduce']
         self.id2rule = {v: k for k, v in self.rule2id.items()}
 
     def __getitem__(self, rule):
@@ -111,23 +108,16 @@ class Rule(object):
         rule_ids = self.rules2indices(sents)
         rules_padded = pad_sents(rule_ids, self.pad_id)
         return torch.tensor(rules_padded, dtype=torch.long)
-    
-    def head_nodes(self):
-        rules = [rule for (rule, rule_id) in sorted(self.rule2id.items(), key=lambda (k, v): v)]
-        rules_heads = [rule[: rule.find('->') - 1] if '->' in rule else rule for rule in rules]
-        return rules_heads
 
     @staticmethod
-    def build(corpus):
-        """ Given a corpus of list of list of rules construct a Rule obj.
-        @param corpus (list[list[str]]): corpus of data_rules constructed in the main
-        @returns rules (Rule): Rule instance produced from provided corpus
+    def build(grammar):
+        """ Given a grammar (ASDL) description of language, extract all production rules
+        @param grammar (ASDLGrammar): grammar object described in the asdl file for the target language
+        @returns rules (Rule): Rule instance produced from the grammar
         """
         rules = Rule()
-        rule_freq = Counter(chain(*corpus))
-        top_rules = sorted(rule_freq.keys(), key=lambda r: rule_freq[r], reverse=True)
-        for rule in top_rules:
-            rules.add(rule)
+        for production in grammar.productions:
+            rules.add(production)
         return rules
 
     def save(self, file_path):
@@ -149,16 +139,17 @@ class Rule(object):
 if __name__ == '__main__':
     args = docopt(__doc__)
 
-    print('read in source sentences: %s' % args['--train-src'])
-    print('read in target sentences: %s' % args['--train-tgt'])
+    lang = args['--lang']
+    if lang == 'lambda':
+        from lang.Lambda.asdl import ASDLGrammar
 
-    (_, tgt_sents), _ = read_corpus(args['--train-src'], args['--train-tgt'])
-    tgt_tokens = [parse(code).to_rules() for code in tgt_sents]
-    #filter GenTokens
-    data_rules = [[token for token in tokens if 'GenToken' not in token] for tokens in tgt_tokens]
+        asdl_desc = open('lang/Lambda/lambda_asdl.txt').read()
+        grammar = ASDLGrammar.from_text(asdl_desc)
 
-    rules = Rule.build(data_rules)
-    print('generated rules: %d' % (len(rules)))
+        rules = Rule.build(grammar)
+        print('generated rules: %d' % (len(rules)))
 
-    rules.save(args['RULE_FILE'])
-    print('rules saved to %s' % args['RULE_FILE'])
+        rules.save(args['RULE_FILE'])
+        print('rules saved to %s' % args['RULE_FILE'])
+    else:
+        print('language:  %s currently not supported' % (lang))
