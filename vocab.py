@@ -271,7 +271,7 @@ if __name__ == '__main__':
         
         tgt_asts = [logical_form_to_ast(grammar, parse_lambda_expr(sent)) for sent in tgt_sents]
         tgt_actions = [parser.get_actions(ast) for ast in tgt_asts]
-        tgt_tokens = [[token for token in actions if isinstance(token, GenTokenAction)] for actions in tgt_actions]
+        tgt_tokens = [[action.token for action in actions if isinstance(action, GenTokenAction)] for actions in tgt_actions]
 
         vocab = Vocab.build(src_sents, tgt_tokens, int(args['--freq-cutoff']))
         print('generated vocabulary, source %d words, target %d words' % (len(vocab.src), len(vocab.tgt)))
