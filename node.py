@@ -24,6 +24,7 @@ class Node(object):
         else:
             self.node2id = dict()
             self.node2id['<pad>'] = 0       #pad token
+            self.node2id['<start>'] = 1     #start token
         self.pad_id = self.node2id['<pad>']
         self.id2node = {v: k for k, v in self.node2id.items()}
 
@@ -115,8 +116,15 @@ class Node(object):
         """
         nodes = Node()
         
-        for type in grammar.types:
-            nodes.add(type.name) #ASDLType(type_name)
+        for field in grammar.fields: #field: Field(name, type, cardinality)
+            node_name = field.type.name #ASDLType(type_name)
+            node_cardinality = field.cardinality
+            if node_cardinality == 'optional':
+                node_name += '?'
+            elif node_cardinality == 'multiple':
+                node_name += '*'
+            
+            nodes.add(node_name)
 
         return nodes
 
