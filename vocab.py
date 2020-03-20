@@ -32,8 +32,7 @@ class VocabEntry(object):
             self.word2id = dict()
             self.word2id['<pad>'] = 0       #pad token
             self.word2id['<start>'] = 1     #start token
-            self.word2id['<eos>'] = 2       #end token
-            self.word2id['<unk>'] = 3       #unknown token
+            self.word2id['<unk>'] = 2       #unknown token
         self.pad_id = self.word2id['<pad>']
         self.unk_id = self.word2id['<unk>']
         self.id2word = {v: k for k, v in self.word2id.items()}
