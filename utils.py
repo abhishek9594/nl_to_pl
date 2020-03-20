@@ -57,25 +57,78 @@ def save_sents(sents, file_path):
         for sent in sents:
             file_obj.write(sent + '\n')
 
-def batch_iter(data, batch_size, shuffle=False):
+def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
     """
     Yield batches of source and target sentences reverse sorted by source sentences' lengths (largest to smallest)
-    @param data (list of (src_sent, tgt_sent)): list of tuples containing source and target sentences
+    @param src_sents (list(list[str])): list of source sentences (list of tokens)
+    @param tgt_sents (list[str]): list of target sentences
+    @param lang: target language
     @param batch_size (int): batch size
     @param shuffle (boolean): whether to randomly shuffle the dataset
     """
-    batch_num = int(math.ceil(len(data) / batch_size))
-    index_array = list(range(len(data)))
+    if lang == 'lambda':
+        from lang.Lambda.lambda_transition_system import LambdaCalculusTransitionSystem
+        from lang.Lambda.transition_system import ApplyRuleAction, ReduceAction, GenTokenAction
+        from lang.Lambda.asdl import ASDLGrammar
+        from lang.Lambda.parse import parse_lambda_expr, logical_form_to_ast
 
-    if shuffle:
-        np.random.shuffle(index_array)
+        asdl_desc = open('lang/Lambda/lambda_asdl.txt').read()
+        grammar = ASDLGrammar.from_text(asdl_desc)
+        parser = LambdaCalculusTransitionSystem(grammar)
 
-    for i in range(batch_num):
-        indices = index_array[i * batch_size: (i + 1) * batch_size]
-        examples = [data[idx] for idx in indices]
+        tgt_asts = [logical_form_to_ast(grammar, parse_lambda_expr(sent)) for sent in tgt_sents]
+        tgt_actions = [parser.get_actions(ast) for ast in tgt_asts]
 
-        examples = sorted(examples, key=lambda e: len(e[0]), reverse=True)
-        src_sents = [e[0] for e in examples]
-        tgt_sents = [e[1] for e in examples]
+        tgt_nodes, tgt_rules = [], []
+        for actions in tgt_actions:
+            tgt_node, tgt_rule = [], []
+            nodes = ['<start>']
+            for action in actions:
+                assert len(nodes) > 0
+                if isinstance(action, ApplyRuleAction):
+                    if nodes[-1][-1] == '*':
+                        tgt_node.append(nodes[-1])
+                    else:
+                        tgt_node.append(nodes.pop())
 
-        yield src_sents, tgt_sents
+                    rule = action.production #ASDLProduction(ASDLType(type), ASDLConstructor(constructor))
+                    fields = rule.constructor.fields #fields[Field(name, type, cardinality)]
+                    curr_nodes = []
+                    for field in fields: #Field(name, ASDLType(name), cardinality)
+                        node_name = field.type.name
+                        field_cardinality = field.cardinality
+                        if field_cardinality == 'multiple':
+                            node_name += '*'
+                        curr_nodes.append(node_name)
+                    nodes.extend(curr_nodes[::-1])
+
+                    tgt_rule.append(rule)
+                elif isinstance(action, GenTokenAction):
+                    tgt_node.append(nodes.pop())
+                    tgt_rule.append(action.token)
+                else:
+                    tgt_node.append(nodes.pop())
+                    tgt_rule.append('Reduce')
+            tgt_nodes.append(tgt_node)
+            tgt_rules.append(tgt_rule)
+
+        data = zip(src_sents, tgt_nodes, tgt_rules)
+
+        batch_num = int(math.ceil(len(data) / batch_size))
+        index_array = list(range(len(data)))
+
+        if shuffle:
+            np.random.shuffle(index_array)
+
+        for i in range(batch_num):
+            indices = index_array[i * batch_size: (i + 1) * batch_size]
+            examples = [data[idx] for idx in indices]
+
+            examples = sorted(examples, key=lambda e: len(e[0]), reverse=True)
+            src_sents = [e[0] for e in examples]
+            tgt_nodes = [e[1] for e in examples]
+            tgt_rules = [e[2] for e in examples]
+
+            yield src_sents, tgt_nodes, tgt_sents
+    else:
+        print('language:  %s currently not supported' % (lang))

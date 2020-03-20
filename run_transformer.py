@@ -3,18 +3,17 @@
 run script to train and test our neural model
 
 Usage:
-    run_transformer.py train --train-src=<file> --train-tgt=<file> --dev-src=<file> --dev-tgt=<file> --vocab=<file> --nodes=<file> --rules=<file> [options]
+    run_transformer.py train --lang=<str> --train-data=<file> --dev-data=<file> --vocab=<file> --nodes=<file> --rules=<file> [options]
     run_transformer.py test MODEL_PATH TEST_SOURCE_FILE TEST_TARGET_FILE OUTPUT_FILE [options]
 
 Options:
     -h --help                       show this screen.
-    --train-src=<file>              train source file
-    --train-tgt=<file>              train target file
-    --dev-src=<file>                dev source file
-    --dev-tgt=<file>                dev target file
+    --lang=<str>                    target language
+    --train-data=<file>             train data file
+    --dev-data=<file>               dev data file
     --vocab=<file>                  vocab file
-    --nodes=<file>                   node file
-    --rules=<file>                   rule file
+    --nodes=<file>                  node file
+    --rules=<file>                  rule file
     --batch-size=<int>              batch size [default: 8]
     --embed-size=<int>              embedding size [default: 512]
     --hidden-size=<int>             hidden size [default: 2048]
@@ -22,7 +21,7 @@ Options:
     --patience=<int>                num epochs early stopping [default: 5]
     --dropout=<float>               dropout rate [default: 0.1]
     --lr=<float>                    learning rate [default: 1e-4]
-    --save-model-to=<file>          save model path [default: trans_copy.pt]
+    --save-model-name=<file>        save model name [default: trans_vanilla.pt]
     --beam-size=<int>               beam size [default: 4]
     --max-decoding-time-step=<int>  max number of decoding time steps [default: 50]
 """
@@ -38,18 +37,18 @@ import pickle
 from vocab import Vocab
 from node import Node
 from rule import Rule
-from parse import parse
-from utils import read_corpus, batch_iter, save_sents, compute_bleu_score, rules_to_code
-from trans_copy import TransCopy
+from utils import read_corpus, batch_iter, save_sents
+from trans_vanilla import TransVanilla
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def validate(model, dev_data, batch_size=32):
+def validate(model, dev_src, dev_tgt, lang, batch_size=32):
     """
     validate model on dev set
-    @param model (TransCopy)
-    @param dev_data (list[(list[str], list[str])]): list of tuples of source and target sentences
-    @param batch_size (int): batch size
+    @param model
+    @param dev_src (list(list[str])): list of source sentences (list of tokens)
+    @param dev_tgt (list[str]): list of target sentences
+    @param lang: target language
     @return dev_loss (float): cross entropy loss on dev set
     """
     was_training = model.training
@@ -59,11 +58,9 @@ def validate(model, dev_data, batch_size=32):
     cum_tgt_words = 0
 
     with torch.no_grad():
-        for src_sents, tgt_sents in batch_iter(dev_data, batch_size):
-            tgt_tokens = [parse(code).to_tokens() for code in tgt_sents]
-            tgt_rules = [parse(code).to_rules() for code in tgt_sents]
+        for src_sents, tgt_nodes, tgt_rules in batch_iter(dev_src, dev_tgt, lang, batch_size):
             num_words_to_predict = sum(len(rules) for rules in tgt_rules)
-            loss = -model(src_sents, tgt_tokens, tgt_rules).sum()
+            loss = -model(src_sents, tgt_nodes, tgt_rules).sum()
             
             cum_loss += loss
             cum_tgt_words += num_words_to_predict
@@ -102,20 +99,19 @@ def train(args):
     train our neural model
     @param args (dict): command line args
     """
-    (train_src, train_tgt), _ = read_corpus(args['--train-src'], args['--train-tgt'])
+    lang = args['--lang']
 
-    (dev_src, dev_tgt), _ = read_corpus(args['--dev-src'], args['--dev-tgt'])
+    train_src, train_tgt = read_corpus(args['--train-data'])
 
-    train_data = list(zip(train_src, train_tgt))
-    dev_data = list(zip(dev_src, dev_tgt))
+    dev_src, dev_tgt = read_corpus(args['--dev-data'])
 
     train_batch_size = dev_batch_size = int(args['--batch-size'])
-    model_save_path = args['--save-model-to']
+    model_save_path = 'models/' + lang + '_' + args['--save-model-name']
     vocab = Vocab.load(args['--vocab'])
     nodes = Node.load(args['--nodes'])
     rules = Rule.load(args['--rules'])
 
-    model = TransCopy(embed_size=int(args['--embed-size']),
+    model = TransVanilla(embed_size=int(args['--embed-size']),
                     hidden_size=int(args['--hidden-size']),
                     vocab=vocab,
                     nodes=nodes,
@@ -134,13 +130,12 @@ def train(args):
 
     begin_time = time.time()
     for epoch in range(int(args['--max-epoch'])):
-        for src_sents, tgt_sents in batch_iter(train_data, batch_size=train_batch_size, shuffle=True):
-            tgt_tokens = [parse(code).to_tokens() for code in tgt_sents]
-            tgt_rules = [parse(code).to_rules() for code in tgt_sents]
-            num_words_to_predict = sum(len(rules) for rules in tgt_rules)
+        for src_sents, tgt_nodes, tgt_rules in batch_iter(train_src, train_tgt, lang, batch_size=train_batch_size, shuffle=True):
+                
+            num_words_to_predict = sum(len(tgt_rule) for tgt_rule in tgt_rules)
             optimizer.zero_grad()
 
-            batch_loss = -model(src_sents, tgt_tokens, tgt_rules).sum()
+            batch_loss = -model(src_sents, tgt_nodes, tgt_rules).sum()
             loss = batch_loss / num_words_to_predict
             loss.backward()
             optimizer.step()
@@ -155,7 +150,7 @@ def train(args):
         cum_tgt_words = 0
 
         #perform validation
-        dev_loss = validate(model, dev_data, dev_batch_size)
+        dev_loss = validate(model, dev_src, dev_tgt, lang, dev_batch_size)
         is_better = epoch == 0 or dev_loss < min(hist_dev_losses)
         hist_dev_losses.append(dev_loss)
         
