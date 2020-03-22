@@ -85,10 +85,10 @@ class Node(object):
         @return node_ids (list[int] or list[list[int]]): sentence(s) in indices
         """
         if type(sents[0]) == list:
-            return [[self[node] if 'GenToken' not in node else self.pad_id for node in sent] for sent in sents]
+            return [[self[node] for node in sent] for sent in sents]
         else:
             sent = sents
-            return [self[node] if 'GenToken' not in node else self.pad_id for node in sent]
+            return [self[node] for node in sent]
 
     def indices2nodes(self, node_ids):
         """ Convert list of indices into nodes.
