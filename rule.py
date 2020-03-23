@@ -86,10 +86,10 @@ class Rule(object):
         @return rule_ids (list[int] or list[list[int]]): sentence(s) in indices
         """
         if type(sents[0]) == list:
-            return [[self[rule] if 'GenToken' not in rule else self.pad_id for rule in sent] for sent in sents]
+            return [[self[rule] if isinstance(rule, ASDLProduction) or rule == 'Reduce' else self.pad_id for rule in sent] for sent in sents]
         else:
             sent = sents
-            return [self[rule] if 'GenToken' not in rule else self.pad_id for rule in sent]
+            return [self[rule] if isinstance(rule, ASDLProduction) or rule == 'Reduce' else self.pad_id for rule in sent]
 
     def indices2rules(self, rule_ids):
         """ Convert list of indices into rules.
