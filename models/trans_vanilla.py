@@ -29,32 +29,37 @@ class TransVanilla(nn.Module):
         self.gen_tok_project = nn.Linear(self.d_model, len(self.vocab.tgt), bias=False)
         self.rule_project = nn.Linear(self.d_model, len(self.rules), bias=False)
 
-    def forward(self, src_sents, tgt_tokens, tgt_rules, padx=0):
+    def forward(self, src_sents, tgt_nodes, tgt_actions, padx=0):
         """
-        src: (list[list[str]])
-        tgt: (list[list[str]])
+        @param src_sents (list[list[str]]): batches of src sentences (list[str])
+        @param tgt_nodes (list[list[str]]): batches of tgt nodes (list[str]) as the input to the decoder
+        @param tgt_actions (list[list[action]]): batches of actions as the gold output of the decoder
+        @return scores (tensor(b,)): batch size tensor of the CE loss
         """
-        """
-        src_padded = src_tensor(src).to(self.device)
-        src_mask = (src_padded != padx).unsqueeze(1)
-        src_encoded = self.encode(src_padded, src_mask)
+        src_in = self.vocab.src.sents2Tensor(src_sents).to(self.device) #(b, max_src_sent)
+        src_mask = (src_in != padx).unsqueeze(1) #(b, 1, max_src_sent)
+        src_encoded = self.encode(src_in, src_mask)
 
-        tgt_padded = self.vocab.tgt.sents2Tensor(tgt).to(self.device)
-        tgt_input = tgt_padded[:, :-1]
-        tgt_mask = (tgt_input != padx).unsqueeze(1)
-        subseq_mask = subsequent_mask(tgt_input.shape[-1]).type_as(tgt_mask.data).to(self.device)
+        tgt_in = self.nodes.sents2Tensor(tgt_nodes).to(self.device)
+        tgt_mask = (tgt_in != padx).unsqueeze(1)
+        subseq_mask = subsequent_mask(tgt_in.shape[-1]).type_as(tgt_mask.data).to(self.device)
         tgt_mask = tgt_mask & subseq_mask
-        tgt_decoded = self.decode(src_encoded, tgt_input, src_mask, tgt_mask)
-        P = F.log_softmax(tgt_decoded, dim=-1)
+        tgt_encoded = self.decode(src_encoded, tgt_in, src_mask, tgt_mask)
 
-        tgt_padded_mask = (tgt_padded != padx).float()
-        #compute cross-entropy between tgt_words and tgt_predicted_words
-        tgt_predicted = torch.gather(P, dim=-1, 
-            index=tgt_padded[:, 1:].unsqueeze(-1)).squeeze(-1) * tgt_padded_mask[:, 1:]
-        scores = tgt_predicted.sum(dim=0)
+        tgt_rules_pred = F.log_softmax(self.rule_project(tgt_encoded), dim=-1)
+        tgt_rules_idx = self.rules.sents2Tensor(tgt_actions).to(self.device) #(b, max_tgt_sent)
+        tgt_rules_mask = (tgt_rules_idx != padx).float()
+        loss_rules = torch.gather(tgt_rules_pred, dim=-1,
+                                    index=tgt_rules_idx.unsqueeze(-1)).squeeze(-1) * tgt_rules_mask
+        
+        tgt_toks_pred = F.log_softmax(self.gen_tok_project(tgt_encoded), dim=-1)
+        tgt_toks_idx = self.vocab.tgt.sents2Tensor(tgt_actions).to(self.device) #(b, max_tgt_sent)
+        tgt_toks_mask = (tgt_toks_idx != padx).float()
+        loss_gen_toks = torch.gather(tgt_toks_pred, dim=-1,
+                                    index=tgt_toks_idx.unsqueeze(-1)).squeeze(-1) * tgt_toks_mask
+
+        scores = (loss_rules + loss_gen_toks).sum(dim=-1) #(b,)
         return scores
-        """
-        pass
         
     def encode(self, src, src_mask=None):
         x = self.pe(self.embeddings.src_embedding(src))
@@ -62,14 +67,11 @@ class TransVanilla(nn.Module):
             x, _ = encoder(x, src_mask)
         return x
 
-    def decode(self, src_encoded, tgt, src_mask=None, tgt_mask=None):
-        """
+    def decode(self, src_encoded, tgt, src_mask=None, tgt_mask=None):        
         x = self.pe(self.embeddings.tgt_embedding(tgt))
         for decoder in self.decoder_blocks:
             x, _, _ = decoder(src_encoded, x, src_mask, tgt_mask)
-        return self.vocab_project(x)
-        """
-        pass
+        return x
 
     def beam_search(self, src_sent, beam_size, max_decoding_time_step):
         """
