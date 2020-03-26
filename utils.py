@@ -59,7 +59,7 @@ def save_sents(sents, file_path):
 
 def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
     """
-    Yield batches of source and target sentences reverse sorted by source sentences' lengths (largest to smallest)
+    Yield batches of source sentences and target nodes and actions lengths
     @param src_sents (list(list[str])): list of source sentences (list of tokens)
     @param tgt_sents (list[str]): list of target sentences
     @param lang: target language
@@ -79,9 +79,9 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
         tgt_asts = [logical_form_to_ast(grammar, parse_lambda_expr(sent)) for sent in tgt_sents]
         tgt_actions = [parser.get_actions(ast) for ast in tgt_asts]
 
-        tgt_nodes, tgt_rules = [], []
+        tgt_nodes, tgt_actions = [], []
         for actions in tgt_actions:
-            tgt_node, tgt_rule = [], []
+            tgt_node, tgt_action = [], []
             nodes = ['<start>']
             for action in actions:
                 assert len(nodes) > 0
@@ -102,17 +102,17 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
                         curr_nodes.append(node_name)
                     nodes.extend(curr_nodes[::-1])
 
-                    tgt_rule.append(rule)
+                    tgt_action.append(rule)
                 elif isinstance(action, GenTokenAction):
                     tgt_node.append(nodes.pop())
-                    tgt_rule.append(action.token)
+                    tgt_action.append(action.token)
                 else:
                     tgt_node.append(nodes.pop())
-                    tgt_rule.append('Reduce')
+                    tgt_action.append('Reduce')
             tgt_nodes.append(tgt_node)
-            tgt_rules.append(tgt_rule)
+            tgt_actions.append(tgt_action)
 
-        data = zip(src_sents, tgt_nodes, tgt_rules)
+        data = zip(src_sents, tgt_nodes, tgt_actions)
 
         batch_num = int(math.ceil(len(data) / batch_size))
         index_array = list(range(len(data)))
@@ -127,8 +127,8 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
             examples = sorted(examples, key=lambda e: len(e[0]), reverse=True)
             src_sents = [e[0] for e in examples]
             tgt_nodes = [e[1] for e in examples]
-            tgt_rules = [e[2] for e in examples]
+            tgt_actions = [e[2] for e in examples]
 
-            yield src_sents, tgt_nodes, tgt_sents
+            yield src_sents, tgt_nodes, tgt_actions
     else:
         print('language:  %s currently not supported' % (lang))
