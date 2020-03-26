@@ -14,6 +14,8 @@ from docopt import docopt
 import pickle
 import torch
 
+from utils import pad_sents
+
 class Node(object):
     def __init__(self, node2id=None):
         """

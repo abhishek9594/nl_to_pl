@@ -18,7 +18,7 @@ from itertools import chain
 import pickle
 import torch
 
-from utils import read_corpus, pad_sents, wrapGenTok
+from utils import read_corpus, pad_sents
 
 
 class VocabEntry(object):

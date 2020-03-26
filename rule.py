@@ -14,6 +14,8 @@ from docopt import docopt
 import pickle
 import torch
 
+from utils import pad_sents
+
 class Rule(object):
     def __init__(self, rule2id=None):
         """
@@ -86,10 +88,10 @@ class Rule(object):
         @return rule_ids (list[int] or list[list[int]]): sentence(s) in indices
         """
         if type(sents[0]) == list:
-            return [[self[rule] if isinstance(rule, ASDLProduction) or rule == 'Reduce' else self.pad_id for rule in sent] for sent in sents]
+            return [[self[rule] if rule == 'Reduce' or not isinstance(rule, str) else self.pad_id for rule in sent] for sent in sents]
         else:
             sent = sents
-            return [self[rule] if isinstance(rule, ASDLProduction) or rule == 'Reduce' else self.pad_id for rule in sent]
+            return [self[rule] if rule == 'Reduce' or not isinstance(rule, str) else self.pad_id for rule in sent]
 
     def indices2rules(self, rule_ids):
         """ Convert list of indices into rules.
