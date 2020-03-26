@@ -77,10 +77,10 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
         parser = LambdaCalculusTransitionSystem(grammar)
 
         tgt_asts = [logical_form_to_ast(grammar, parse_lambda_expr(sent)) for sent in tgt_sents]
-        tgt_actions = [parser.get_actions(ast) for ast in tgt_asts]
+        tgt_rules = [parser.get_actions(ast) for ast in tgt_asts]
 
         tgt_nodes, tgt_actions = [], []
-        for actions in tgt_actions:
+        for actions in tgt_rules:
             tgt_node, tgt_action = [], []
             nodes = ['<start>']
             for action in actions:
@@ -125,10 +125,10 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
             examples = [data[idx] for idx in indices]
 
             examples = sorted(examples, key=lambda e: len(e[0]), reverse=True)
-            src_sents = [e[0] for e in examples]
-            tgt_nodes = [e[1] for e in examples]
-            tgt_actions = [e[2] for e in examples]
+            batch_sents = [e[0] for e in examples]
+            batch_nodes = [e[1] for e in examples]
+            batch_actions = [e[2] for e in examples]
 
-            yield src_sents, tgt_nodes, tgt_actions
+            yield batch_sents, batch_nodes, batch_actions
     else:
         print('language:  %s currently not supported' % (lang))
