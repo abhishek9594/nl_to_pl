@@ -95,9 +95,9 @@ class VocabEntry(object):
         @return word_ids (list[int] or list[list[int]]): sentence(s) in indices
         """
         if type(sents[0]) == list:
-            return [[self[w] for w in s] for s in sents]
+            return [[self[w] if isinstance(w, str) and w != 'Reduce' else self.pad_id for w in s] for s in sents]
         else:
-            return [self[w] for w in sents]
+            return [self[w] if isinstance(w, str) and w != 'Reduce' else self.pad_id for w in sents]
 
     def indices2words(self, word_ids):
         """ Convert list of indices into words.
