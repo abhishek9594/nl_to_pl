@@ -4,7 +4,8 @@ run script to train and test our neural model
 
 Usage:
     run_transformer.py train --lang=<str> --train-data=<file> --dev-data=<file> --vocab=<file> --nodes=<file> --rules=<file> [options]
-    run_transformer.py test MODEL_PATH TEST_SOURCE_FILE TEST_TARGET_FILE OUTPUT_FILE [options]
+    run_transformer.py transfer MODEL_PATH --lang=<str> --train-data=<file> --dev-data=<file> --vocab=<file> --nodes=<file> --rules=<file> [options]
+    run_transformer.py test --lang=<str> MODEL_PATH TEST_FILE OUTPUT_FILE [options]
 
 Options:
     -h --help                       show this screen.
@@ -21,9 +22,8 @@ Options:
     --patience=<int>                num epochs early stopping [default: 5]
     --dropout=<float>               dropout rate [default: 0.1]
     --lr=<float>                    learning rate [default: 1e-4]
-    --save-model-name=<file>        save model name [default: trans_vanilla.pt]
+    --save-model-name=<file>        save model name [default: trans.pt]
     --beam-size=<int>               beam size [default: 4]
-    --max-decoding-time-step=<int>  max number of decoding time steps [default: 50]
 """
 from __future__ import division
 
@@ -37,7 +37,7 @@ import pickle
 from vocab import Vocab
 from node import Node
 from rule import Rule
-from utils import read_corpus, batch_iter, save_sents
+from utils import read_corpus, batch_iter, save_sents, comp_exact_match
 from models.trans_vanilla import TransVanilla
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -72,32 +72,33 @@ def validate(model, dev_src, dev_tgt, lang, batch_size=32):
 
     return dev_loss
 
-def decode(model, test_data_src, beam_size, max_decoding_time_step):
+def decode(model, lang, test_src, beam_size):
     """
     run inference on model to generate target sentences
-    @param model (TransCopy)
-    @param test_data_src (list[list[str]): list of test source sentences
+    @param model (TransVanilla)
+    @param lang (str): target language
+    @param test_src (list[list[str]): list of test source sentences
     @param beam_size (int): beam size
-    @param max_decoding_time_step (int): maximum decoding time steps
-    @return gen_tgt_rules (list[list[str]])
+    @return tgt_actions (list[list[action]]): list of AST actions
     """
     was_training = model.training
     model.eval()
 
-    gen_tgt_rules = []
+    tgt_actions = []
     with torch.no_grad():
-        for src in test_data_src:
-            gen_rules = model.beam_search(src, beam_size, max_decoding_time_step)
-            gen_tgt_rules.append(gen_rules)
+        for src_sent in test_src:
+            actions = model.beam_search(lang, src_sent, beam_size)
+            tgt_actions.append(actions)
 
     if was_training:
         model.train
-    return gen_tgt_rules
+    return tgt_actions
 
-def train(args):
+def train(args, model_path=None):
     """
     train our neural model
     @param args (dict): command line args
+    @param model_path (str): optional prev saved model_path for transfer
     """
     lang = args['--lang']
 
@@ -111,12 +112,16 @@ def train(args):
     nodes = Node.load(args['--nodes'])
     rules = Rule.load(args['--rules'])
 
-    model = TransVanilla(embed_size=int(args['--embed-size']),
-                    hidden_size=int(args['--hidden-size']),
-                    vocab=vocab,
-                    nodes=nodes,
-                    rules=rules,
-                    dropout_rate=float(args['--dropout']))
+    if model_path is None:
+        model = TransVanilla(embed_size=int(args['--embed-size']),
+                        hidden_size=int(args['--hidden-size']),
+                        vocab=vocab,
+                        nodes=nodes,
+                        rules=rules,
+                        dropout_rate=float(args['--dropout']))
+    else:
+        model = TransVanilla.load(model_path)
+
     model.train()
     model = model.to(device)
 
@@ -131,7 +136,7 @@ def train(args):
     begin_time = time.time()
     for epoch in range(int(args['--max-epoch'])):
         for src_sents, tgt_nodes, tgt_actions in batch_iter(train_src, train_tgt, lang, batch_size=train_batch_size, shuffle=True):
-                
+
             num_words_to_predict = sum(len(actions) for actions in tgt_actions)
             optimizer.zero_grad()
 
@@ -176,29 +181,43 @@ def train(args):
 
 def test(args):
     """
-    test TransCopy model by generating target sentences
+    test Transformer model by generating the target language lf
     @param args (dict): command line args
     """
-    model = TransCopy.load(args['MODEL_PATH'])
+    lang = args['--lang']
+    if lang == 'lambda':
+        from lang.Lambda.hypothesis import Hypothesis
+        from lang.Lambda.parse import ast_to_logical_form
+
+    else:
+        print('language:  %s currently not supported' % (lang))
+
+    model = TransVanilla.load(args['MODEL_PATH'])
     model = model.to(device)
 
-    (test_data_src, test_data_tgt), sent_str_map = read_corpus(args['TEST_SOURCE_FILE'], args['TEST_TARGET_FILE'])
+    test_src, test_tgt = read_corpus(args['TEST_FILE'])
     
-    gen_tgt_rules = decode(model, test_data_src, 
-                            beam_size=int(args['--beam-size']),
-                            max_decoding_time_step=int(args['--max-decoding-time-step']))
+    tgt_actions = decode(model, lang, test_src,
+                            beam_size=int(args['--beam-size']))
 
-    gen_tgt_sents = [rules_to_code(gen_rules, code) for (gen_rules, code) in zip(gen_tgt_rules, test_data_tgt)]
+    tgt_hyps = []
+    for actions in tgt_actions:
+        hyp = Hypothesis()
+        for action in actions:
+            hyp.apply_action(action)
+        tgt_hyps.append(hyp)
+    pred_tgt = [ast_to_logical_form(hyp.tree).to_string() for hyp in tgt_hyps]
 
-    save_sents(gen_tgt_sents, args['OUTPUT_FILE'])
+    save_sents(pred_tgt, args['OUTPUT_FILE'])
 
-    bleu_score = compute_bleu_score(refs=test_data_tgt, hyps=gen_tgt_sents)
-    #em = compute_exact_match(refs=test_data_tgt, hyps=gen_tgt_sents)
-    print('BLEU score = %.2f' % (bleu_score))
+    em = comp_exact_match(refs=test_tgt, hyps=pred_tgt)
+    print('ACC = %.2f' % (em))
 
 if __name__ == "__main__":
     args = docopt(__doc__)
     if args['train']:
         train(args)
+    elif args['transfer']:
+        train(args, model_path=args['MODEL_PATH'])
     elif args['test']:
         test(args)

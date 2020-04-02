@@ -86,7 +86,7 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
             for action in actions:
                 assert len(nodes) > 0
                 if isinstance(action, ApplyRuleAction):
-                    if nodes[-1][-1] == '*':
+                    if grammar.mul_cardinality(nodes[-1]):
                         tgt_node.append(nodes[-1])
                     else:
                         tgt_node.append(nodes.pop())
@@ -106,7 +106,7 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
                 elif isinstance(action, GenTokenAction):
                     tgt_node.append(nodes.pop())
                     tgt_action.append(action.token)
-                else:
+                else: #ReduceAction
                     tgt_node.append(nodes.pop())
                     tgt_action.append('Reduce')
             tgt_nodes.append(tgt_node)
@@ -132,3 +132,15 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
             yield batch_sents, batch_nodes, batch_actions
     else:
         print('language:  %s currently not supported' % (lang))
+
+def comp_exact_match(refs, hyps):
+    """
+    @param refs (list[list[str]]): list of reference sentences
+    @param hyps (list[list[str]]): list of predicted sentences (hypotheses)
+    @return em (float): average exact match value
+    """
+    assert len(refs) == len(hyps)
+    match = 0
+    for ref, hyp in zip(refs, hyps):
+        if ref == hyp: match += 1
+    return match / len(refs)
