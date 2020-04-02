@@ -73,14 +73,71 @@ class TransVanilla(nn.Module):
             x, _, _ = decoder(src_encoded, x, src_mask, tgt_mask)
         return x
 
-    def beam_search(self, src_sent, beam_size, max_decoding_time_step):
+    def beam_search(self, lang, src_sent, beam_size):
         """
         given a source sentence, search possible hyps, from this transformer model, up to the beam size
+        @param lang (str): target language
         @param src_sent (list[str]): source sentence
         @param beam_size (int)
-        @param max_decoding_time_step (int): decode the hyp until <eos> or max decoding time step
-        @return best_hyp (list[str]): best possible hyp
+        @return actions (list[action]): decoded AST actions
         """
+        
+        if lang == 'lambda':
+            from lang.Lambda.asdl import ASDLGrammar
+            from lang.Lambda.transition_system import ApplyRuleAction, GenTokenAction, ReduceAction
+
+            asdl_desc = open('lang/Lambda/lambda_asdl.txt').read()
+            grammar = ASDLGrammar.from_text(asdl_desc)            
+        else:
+            print('language: %s currently not supported' % (lang))
+            return
+
+        src_in = self.vocab.src.sents2Tensor([src_sent]).to(self.device)
+        src_encoded = self.encode(src_in, src_mask=None)
+
+        explore_nodes = ['<start>']
+        tgt_nodes = []
+        actions = []
+        while len(explore_nodes) > 0:
+            if grammar.mul_cardinality(explore_nodes[-1]):
+                curr_node = explore_nodes[-1]
+            else:
+                curr_node = explore_nodes.pop()
+            tgt_nodes.append(curr_node)
+
+            tgt_in = self.nodes.sents2Tensor([tgt_nodes]).to(self.device)
+            tgt_mask = subsequent_mask(tgt_in.shape[-1]).byte().to(self.device)
+            tgt_encoded = self.decode(src_encoded, tgt_in, src_mask=None, tgt_mask=tgt_mask)
+            if grammar.node_prim_type(curr_node):
+                tgt_toks_pred = F.log_softmax(self.gen_tok_project(tgt_encoded), dim=-1)[:, -1, :] #extract last pred token
+                top_tok_id = tgt_toks_pred.argmax().item()
+                actions.append(GenTokenAction(self.vocab.tgt.id2word[top_tok_id]))
+            else:
+                #composite_type => rule
+                rules_out = self.rule_project(tgt_encoded)[:, -1, :] #(b, R)
+                rules_mask = torch.tensor([self.rules.rule_match(curr_node)]).byte().to(self.device)
+                rules_cand = rules_out.masked_fill(rules_mask == 0, -float('inf'))
+                tgt_rules_pred = F.log_softmax(rules_cand, dim=-1)
+                top_rule_id = tgt_rules_pred.argmax().item()
+                rule_pred = self.rules.id2rule[top_rule_id]
+                if rule_pred == 'Reduce':
+                    actions.append(ReduceAction())
+                    explore_nodes.pop()
+                else:
+                    actions.append(ApplyRuleAction(rule_pred))
+                    #extract next action nodes from rule_pred constructor
+                    fields = rule_pred.constructor.fields
+                    action_nodes = []
+                    for field in fields: #Field(name, ASDLType(name), cardinality)
+                        node_name = field.type.name
+                        field_cardinality = field.cardinality
+                        if field_cardinality == 'multiple':
+                            node_name += '*'
+                        action_nodes.append(node_name)
+                    explore_nodes.extend(action_nodes[::-1])
+        
+        return actions
+        #old code
         """
         src_padded = self.vocab.src.sents2Tensor([src_sent]).to(self.device)
         src_encoded = self.encode(src_padded, src_mask=None)
@@ -139,7 +196,6 @@ class TransVanilla(nn.Module):
         best_hyp = [str(word) for word in completed_hyps[0][0]]
         return best_hyp
         """
-        pass
 
     @property
     def device(self):
