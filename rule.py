@@ -111,6 +111,28 @@ class Rule(object):
         rules_padded = pad_sents(rule_ids, self.pad_id)
         return torch.tensor(rules_padded, dtype=torch.long)
 
+    def rule_match(self, node):
+        """
+        iterate through all rules to match rules with head node same as the node
+        @param node (str): the target node to match with the head nodes
+        @return match_res (list[bool]): list of booleans according to the rule head node match
+        """
+        if node == '<start>': return [0, 0] + [1] * (len(self) - 2)
+        mul_cardinality = True if node[-1] == '*' else False
+        match_res = [0] * len(self)
+        if mul_cardinality: match_res[self['Reduce']] = 1
+        for idx in range(2, len(self)): #skip <pad> and Reduce
+            rule = self.id2rule[idx] #ASDLProduction(type, constructor)
+            rule_hnode = rule.type.name
+            match = False
+            if mul_cardinality:
+                match = node[:-1] == rule_hnode
+            else:
+                match = node == rule_hnode
+            if match: match_res[idx] = 1
+
+        return match_res
+
     @staticmethod
     def build(grammar):
         """ Given a grammar (ASDL) description of language, extract all production rules
