@@ -87,6 +87,14 @@ class ASDLGrammar(object):
     def is_primitive_type(self, asdl_type):
         return asdl_type in self.primitive_types
 
+    def node_prim_type(self, node):
+        for asdl_node in self.primitive_types:
+            if asdl_node.name == node:  return True
+        return False
+
+    def mul_cardinality(self, node):
+        return True if node[-1] == '*' else False
+
     @staticmethod
     def from_text(text):
         def _parse_field_from_text(_text):
