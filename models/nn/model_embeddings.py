@@ -17,8 +17,6 @@ class ModelEmbeddings(nn.Module):
         super(ModelEmbeddings, self).__init__()
         self.embed_size = embed_size
 
-        src_pad_idx = vocab.src.pad_id
-        node_pad_idx = nodes.pad_id
-        
-        self.src_embedding = nn.Embedding(len(vocab.src), self.embed_size, padding_idx=src_pad_idx)
-        self.tgt_embedding = nn.Embedding(len(nodes), self.embed_size, padding_idx=node_pad_idx)
+        self.src_embedding = nn.Embedding(len(vocab.src), self.embed_size, padding_idx=vocab.src.pad_id)
+        self.tgt_node_embedding = nn.Embedding(len(nodes), self.embed_size, padding_idx=nodes.pad_id)
+        self.tgt_token_embedding = nn.Embedding(len(vocab.tgt), self.embed_size, padding_idx=vocab.tgt.pad_id)

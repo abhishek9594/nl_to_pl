@@ -135,12 +135,12 @@ def train(args, model_path=None):
 
     begin_time = time.time()
     for epoch in range(int(args['--max-epoch'])):
-        for src_sents, tgt_nodes, tgt_actions in batch_iter(train_src, train_tgt, lang, batch_size=train_batch_size, shuffle=True):
+        for src_sents, tgt_nodes, tgt_tokens, tgt_actions in batch_iter(train_src, train_tgt, lang, batch_size=train_batch_size, shuffle=True):
 
             num_words_to_predict = sum(len(actions) for actions in tgt_actions)
             optimizer.zero_grad()
 
-            batch_loss = -model(src_sents, tgt_nodes, tgt_actions).sum()
+            batch_loss = -model(src_sents, tgt_nodes, tgt_tokens, tgt_actions).sum()
             loss = batch_loss / num_words_to_predict
             loss.backward()
             optimizer.step()

@@ -99,10 +99,10 @@ class Node(object):
         """
         return [self.id2node[n_id] for n_id in node_ids]
 
-    def sents2Tensor(self, sents):
+    def nodes2Tensor(self, sents):
         """
-        Convert list of tgt sents to node tensor by padding required sents
-        where tgt sents can contain node and GenToken toks
+        Convert list of tgt nodes tensor by padding required sents
+        where tgt sents contain nodes
         @param sents (list[list[str]]): batch of tgt sents
         @return node_tensor (torch.tensor (max_sent_len, batch_size))
         """
