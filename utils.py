@@ -79,12 +79,17 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
         tgt_asts = [logical_form_to_ast(grammar, parse_lambda_expr(sent)) for sent in tgt_sents]
         tgt_rules = [parser.get_actions(ast) for ast in tgt_asts]
 
-        tgt_nodes, tgt_actions = [], []
+        tgt_nodes, tgt_tokens, tgt_actions = [], [], []
         for actions in tgt_rules:
-            tgt_node, tgt_action = [], []
+            tgt_node, tgt_token, tgt_action = [], [], []
             nodes = ['<start>']
             for action in actions:
                 assert len(nodes) > 0
+                #only include token if last action was GenToken
+                if len(tgt_action) > 0 and tgt_action[-1] != 'Reduce' and type(tgt_action[-1]) == str:
+                    tgt_token.append(tgt_action[-1])
+                else:
+                    tgt_token.append('<pad>')
                 if isinstance(action, ApplyRuleAction):
                     if grammar.mul_cardinality(nodes[-1]):
                         tgt_node.append(nodes[-1])
@@ -110,9 +115,10 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
                     tgt_node.append(nodes.pop())
                     tgt_action.append('Reduce')
             tgt_nodes.append(tgt_node)
+            tgt_tokens.append(tgt_token)
             tgt_actions.append(tgt_action)
 
-        data = zip(src_sents, tgt_nodes, tgt_actions)
+        data = zip(src_sents, tgt_nodes, tgt_tokens, tgt_actions)
 
         batch_num = int(math.ceil(len(data) / batch_size))
         index_array = list(range(len(data)))
@@ -127,9 +133,10 @@ def batch_iter(src_sents, tgt_sents, lang, batch_size, shuffle=False):
             examples = sorted(examples, key=lambda e: len(e[0]), reverse=True)
             batch_sents = [e[0] for e in examples]
             batch_nodes = [e[1] for e in examples]
-            batch_actions = [e[2] for e in examples]
+            batch_tokens = [e[2] for e in examples]
+            batch_actions = [e[3] for e in examples]
 
-            yield batch_sents, batch_nodes, batch_actions
+            yield batch_sents, batch_nodes, batch_tokens, batch_actions
     else:
         print('language:  %s currently not supported' % (lang))
 
