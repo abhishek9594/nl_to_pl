@@ -58,9 +58,9 @@ def validate(model, dev_src, dev_tgt, lang, batch_size=32):
     cum_tgt_words = 0
 
     with torch.no_grad():
-        for src_sents, tgt_nodes, tgt_actions in batch_iter(dev_src, dev_tgt, lang, batch_size):
+        for src_sents, tgt_nodes, tgt_tokens, tgt_actions in batch_iter(dev_src, dev_tgt, lang, batch_size):
             num_words_to_predict = sum(len(actions) for actions in tgt_actions)
-            loss = -model(src_sents, tgt_nodes, tgt_actions).sum()
+            loss = -model(src_sents, tgt_nodes, tgt_tokens, tgt_actions).sum()
             
             cum_loss += loss
             cum_tgt_words += num_words_to_predict
