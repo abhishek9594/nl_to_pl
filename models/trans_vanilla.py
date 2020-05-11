@@ -21,8 +21,9 @@ class TransVanilla(nn.Module):
         self.vocab = vocab
         self.nodes = nodes
         self.rules = rules
-        self.embeddings = ModelEmbeddings(self.d_model, self.vocab, self.nodes)
+        self.embeddings = ModelEmbeddings(self.d_model, self.vocab, self.nodes, self.rules)
         self.pe = PositionalEmbeddings(self.d_model, self.dropout_rate)
+        self.scale_decoder_embedding = nn.Linear(self.d_model*2, self.d_model, bias=False)
         
         self.encoder_blocks = clone(TransEncoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
         self.decoder_blocks = clone(TransDecoder(self.d_model, self.d_ff, self.dropout_rate), n=6)
@@ -41,12 +42,15 @@ class TransVanilla(nn.Module):
         src_mask = (src_in != padx).unsqueeze(1) #(b, 1, max_src_sent)
         src_encoded = self.encode(src_in, src_mask)
 
+        batch_size = len(tgt_nodes)
         tgt_in_nodes = self.nodes.nodes2Tensor(tgt_nodes).to(self.device)
+        tgt_in_actions = torch.cat([torch.zeros(batch_size, 1, dtype=torch.long, device=self.device),
+                                    self.rules.rules2Tensor(tgt_actions).to(self.device)[:, :-1]], dim=-1) #(b, max_tgt_sent)
         tgt_in_tokens = self.vocab.tgt.sents2Tensor(tgt_tokens).to(self.device)
         tgt_mask = (tgt_in_nodes != padx).unsqueeze(1)
         subseq_mask = subsequent_mask(tgt_in_nodes.shape[-1]).type_as(tgt_mask.data).to(self.device)
         tgt_mask = tgt_mask & subseq_mask
-        tgt_encoded = self.decode(src_encoded, tgt_in_nodes, tgt_in_tokens, src_mask, tgt_mask)
+        tgt_encoded = self.decode(src_encoded, tgt_in_nodes, tgt_in_actions, tgt_in_tokens, src_mask, tgt_mask)
 
         tgt_rules_pred = F.log_softmax(self.rule_project(tgt_encoded), dim=-1)
         tgt_rules_idx = self.rules.rules2Tensor(tgt_actions).to(self.device) #(b, max_tgt_sent)
@@ -69,18 +73,19 @@ class TransVanilla(nn.Module):
             x, _ = encoder(x, src_mask)
         return x
 
-    def decode(self, src_encoded, tgt_nodes, tgt_tokens, src_mask=None, tgt_mask=None):        
-        x = self.pe(self.embeddings.tgt_node_embedding(tgt_nodes) + self.embeddings.tgt_token_embedding(tgt_tokens))
+    def decode(self, src_encoded, tgt_nodes, tgt_actions, tgt_tokens, src_mask=None, tgt_mask=None):     
+        y2 = torch.cat([self.pe(self.embeddings.tgt_node_embedding(tgt_nodes)),
+                    self.pe( self.embeddings.tgt_action_embedding(tgt_actions) + self.embeddings.tgt_token_embedding(tgt_tokens))], dim=-1)
+        y = self.scale_decoder_embedding(y2)
         for decoder in self.decoder_blocks:
-            x, _, _ = decoder(src_encoded, x, src_mask, tgt_mask)
-        return x
+            y, _, _ = decoder(src_encoded, y, src_mask, tgt_mask)
+        return y
 
-    def beam_search(self, lang, src_sent, beam_size):
+    def generate(self, lang, src_sent):
         """
-        given a source sentence, search possible hyps, from this transformer model, up to the beam size
+        given a source sentence, search possible hyps, from this transformer model
         @param lang (str): target language
         @param src_sent (list[str]): source sentence
-        @param beam_size (int)
         @return actions (list[action]): decoded AST actions
         """
         
@@ -98,7 +103,7 @@ class TransVanilla(nn.Module):
         src_encoded = self.encode(src_in, src_mask=None)
 
         explore_nodes = ['<start>']
-        tgt_nodes, tgt_tokens = [], ['<pad>']
+        tgt_nodes, tgt_actions, tgt_tokens = [], ['<pad>'], ['<pad>']
         actions = []
         while len(explore_nodes) > 0:
             if grammar.mul_cardinality(explore_nodes[-1]):
@@ -108,13 +113,15 @@ class TransVanilla(nn.Module):
             tgt_nodes.append(curr_node)
 
             tgt_in_nodes = self.nodes.nodes2Tensor([tgt_nodes]).to(self.device)
+            tgt_in_actions = self.rules.rules2Tensor([tgt_actions]).to(self.device)
             tgt_in_tokens = self.vocab.tgt.sents2Tensor([tgt_tokens]).to(self.device)
             tgt_mask = subsequent_mask(tgt_in_nodes.shape[-1]).byte().to(self.device)
-            tgt_encoded = self.decode(src_encoded, tgt_in_nodes, tgt_in_tokens, src_mask=None, tgt_mask=tgt_mask)
+            tgt_encoded = self.decode(src_encoded, tgt_in_nodes, tgt_in_actions, tgt_in_tokens, src_mask=None, tgt_mask=tgt_mask)
             if grammar.node_prim_type(curr_node):
                 tgt_toks_pred = F.log_softmax(self.gen_tok_project(tgt_encoded), dim=-1)[:, -1, :] #extract last pred token
                 top_tok_id = tgt_toks_pred.argmax().item()
                 actions.append(GenTokenAction(self.vocab.tgt.id2word[top_tok_id]))
+                tgt_actions.append('<pad>')
                 tgt_tokens.append(self.vocab.tgt.id2word[top_tok_id])
             else:
                 #composite_type => rule
@@ -139,6 +146,7 @@ class TransVanilla(nn.Module):
                             node_name += '*'
                         action_nodes.append(node_name)
                     explore_nodes.extend(action_nodes[::-1])
+                tgt_actions.append(rule_pred)
                 tgt_tokens.append('<pad>')
         
         return actions
